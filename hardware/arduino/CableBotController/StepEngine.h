@@ -1,10 +1,12 @@
 // DEFINES A STEPPING ENGINE BASE ON TIMER INTERRUPTS AND PORT MANIPULATION
 
 
-#define CIRCULAR_BUFFER_INT_SAFE // make circular buffers interrupt-compatible
-#define BUFFER_SIZE 512
+#define STEP_BUFFER_SIZE 512
+#define POS_BUFFER_SIZE 64
 #define DEFAULT_TIMER_PERIOD 5000 // in microseconds, approximate!
 #define TIMER_PERIOD_BITSHIFT 4 // bit shift for conversion between uint16_t period and unsigned long period in microseconds
+
+#define CIRCULAR_BUFFER_INT_SAFE // make circular buffers interrupt-compatible
 #include "CircularBuffer.hpp"
 
 // Stepping structure
@@ -31,35 +33,49 @@ void step_t::print() {
   Serial.print("us");
 }
 
-// BUFFER CONTAINING A COLLECTION OF STEPS
-class StepBuffer : public CircularBuffer<step_t, BUFFER_SIZE> {
+// Data Buffers
+template <class T,size_t N>
+class DataBuffer : public CircularBuffer<T,N> {
   public:
+    bool loop = false; // is the buffer looping ?
     void print();
 };
 
-void StepBuffer::print() {
-  Serial.println("=== CURRENT BUFFER ===");
+template <class T,size_t N>
+void DataBuffer<T,N>::print() {
+  Serial.println("=== BUFFER ===");
   for (unsigned long i=0;i<size();i++) {
-    StepBuffer* self=this;
-    step_t step = this->operator[](i);
+    T item = this->operator[](i);
     Serial.print(i);
     Serial.print("\t");
-    step.print();
+    item.print();
     Serial.println();
   }
   Serial.println("======================");
 };
 
+// BUFFER CONTAINING A COLLECTION OF STEPS
+typedef DataBuffer<step_t, STEP_BUFFER_SIZE> StepBuffer;
+// Buffer containing a collection of stepper positions
+typedef DataBuffer<StepperPositions, POS_BUFFER_SIZE> PositionsBuffer;
+
+
 // STEPPER ENGINE CLASS
 class StepEngine {
-  public:
-    StepBuffer buffer;
-    bool loopBuffer = true; // keep data on buffers for looping over ?
+  private:
+    StepperPositions _currentPosition; // the current position
     unsigned long timerTicks = 0;
-    StepperPositions _currentPosition;
+  public:
+    StepBuffer stepBuffer; // the next steps to perform
+    PositionsBuffer positionsBuffer; // the next positions to reach
     void setup();
     void step();
     void update();
+    StepperPositions getCurrentPosition() {noInterrupts(); StepperPositions cp = _currentPosition; interrupts(); return cp;}
+    void setCurrentPosition(StepperPositions p) {noInterrupts(); _currentPosition = p; interrupts(); return;}
+    StepperPositions targetPosition() {return positionsBuffer.first();}
+    void move(StepperPositions motion);
+    void moveTo(StepperPositions position);
 };
 
 // Define the unique stepper engine
@@ -76,10 +92,10 @@ void StepEngine::setup() {
 // ENGINE RUN FUNCTION
 void StepEngine::step() {
   // keep track of the number of interrupts
-  timerTicks++;
+  // timerTicks++;
   // RETRIEVE THE NEXT STEP
-  if (buffer.isEmpty()) return;
-  step_t nextStep = buffer.shift(); // this might take too much time..
+  if (stepBuffer.isEmpty()) return;
+  step_t nextStep = stepBuffer.shift(); // this might take too much time..
   // SET PORT STATES; DIR before STEP
   PORT_DIR = nextStep.dir;
   if (DEDGE) // double edge mode, only toggle the step port
@@ -92,11 +108,11 @@ void StepEngine::step() {
   // MODIFY THE TIMER PERIOD
   Timer1.setPeriod(nextStep.getUSPeriod());
   // IF LOOPING, RE-PUSH the current step at the end of the buffer
-  if (loopBuffer) buffer.push(nextStep);
+  if (stepBuffer.loop) stepBuffer.push(nextStep);
   // Update the current positions
   for (int8_t b=0;b<8;b++) _currentPosition[b] += (bitRead(nextStep.dir,b) ? bitRead(nextStep.step,b) : -bitRead(nextStep.step,b));
   // Is the buffer empty ?
-  if (buffer.isEmpty()) Timer1.setPeriod(DEFAULT_TIMER_PERIOD);
+  if (stepBuffer.isEmpty()) Timer1.setPeriod(DEFAULT_TIMER_PERIOD);
 }
 
 // BUFFER FROM SERIAL
@@ -108,15 +124,15 @@ void readHEXBufferFromSerial() {
     step_t newStep ;
     newStep.step = hex2byte(msg[0],msg[1]);//readByteFrom2hex();
     newStep.dir = hex2byte(msg[2],msg[3]);//readByteFrom2hex();
-    while (!steppers.buffer.available()); // wait for the buffer to have free space
-    steppers.buffer.push(newStep);
+    while (!steppers.stepBuffer.available()); // wait for the buffer to have free space
+    steppers.stepBuffer.push(newStep);
   }
 };
 
 
 // SAMPLE BUFFERS
 // Ramp buffer (accelerates to target speed then decelerate to stanstill)
-void generateRampBuffer(float maxspeed=MAX_SPEED, float acceleration=MAX_ACCELERATION, uint16_t length=BUFFER_SIZE) {
+void generateRampBuffer(float maxspeed=MAX_SPEED, float acceleration=MAX_ACCELERATION, uint16_t length=STEP_BUFFER_SIZE) {
   step_t newStep;
   newStep.step = 0b11111111; // all motors turn
   newStep.dir = 0b11111111; // in the same direction
@@ -125,7 +141,7 @@ void generateRampBuffer(float maxspeed=MAX_SPEED, float acceleration=MAX_ACCELER
   for (unsigned long i=0;i<length;i++) {
     speed = min(speed,maxspeed);
     newStep.setUSPeriod((unsigned long)(1000000.0/speed));
-    steppers.buffer.push(newStep);
+    steppers.stepBuffer.push(newStep);
     if (speed<maxspeed or i>length-rampSteps-1) {
       speed += acceleration/speed;
       rampSteps++;

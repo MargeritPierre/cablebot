@@ -31,7 +31,7 @@ void setup() {
 
   // INITIALIZE TMC5160 DRIVERS
   drivers.setup();
-  drivers.testConnection(); // optional
+  // drivers.testConnection(); // optional
   drivers.applyConfig();
   drivers.enable();
 
@@ -42,19 +42,30 @@ void setup() {
   steppers.setup();
 
   Serial.println("Setup Finished.");
+  // testOperationsOnStepperPositions();
 }
 
 // =================================================================== LOOP
 unsigned long lastMillis = 0;
-unsigned long printPeriodMillis = 100;
+unsigned long printPeriodMillis = 0;
 void loop() {
 
   if (Serial.available()) { // a new message is available on the serial
     Serial.println("New Message!");
     char header = Serial.read();
-    Serial.read(); // remove the message separator(':')
     switch (header) {
-      case 'M': // MOTION
+      case 'M': // MOVE TO
+        while (!steppers.positionsBuffer.available()); // wait for the positions buffer to have free space
+        long motion[N_MOTORS];
+        // for (uint8_t i=0;i<N_MOTORS;i++) {
+        //   motion[i] = (long)Serial.parseInt();
+        //   Serial.read(); // remove the separator character
+        // };
+        StepperPositions nextPosition = StepperPositions(motion); 
+        // if (steppers.positionsBuffer.isEmpty()) newPosition = newPosition + steppers.getCurrentPosition();
+        // else newPosition = newPosition + steppers.positionsBuffer.last();
+        steppers.positionsBuffer.push(nextPosition);
+        steppers.positionsBuffer.print();
         break;
       case 'E': // ENABLE DRIVERS
         drivers.enable();
@@ -68,14 +79,17 @@ void loop() {
         Serial.println("DRIVER::RMS_CURRENT set to "+ String(drivers.rms_current));
         break;
       case 'P': // PRINT BUFFER
-        steppers.buffer.print();
+        steppers.stepBuffer.print();
+        break;
+      case 'X': // PRINT stepper positions
+        printPeriodMillis = Serial.parseInt();
         break;
       default: // BUFFER-RELATED MESSAGES
-        if (1) steppers.buffer.clear();
+        if (1) steppers.stepBuffer.clear();
         else {
           Serial.println("Emptying the buffer...");
-          steppers.loopBuffer = false;
-          while (!steppers.buffer.isEmpty()); // wait for the buffer to be empty
+          steppers.stepBuffer.loop = false;
+          while (!steppers.stepBuffer.isEmpty()); // wait for the buffer to be empty
         };
         Timer1.stop(); delay(100);
         switch (header) {
@@ -85,7 +99,7 @@ void loop() {
           case 'R': // Ramp buffer
             float maxspeed = MAX_SPEED;
             float acceleration = MAX_ACCELERATION;
-            uint16_t length = BUFFER_SIZE;
+            uint16_t length = STEP_BUFFER_SIZE;
             if (Serial.available()) maxspeed = Serial.parseFloat();
             Serial.read();
             if (Serial.available()) acceleration = Serial.parseFloat();
@@ -94,7 +108,7 @@ void loop() {
             generateRampBuffer(maxspeed,acceleration,length);
             break;
         };
-        steppers.loopBuffer = true;
+        steppers.stepBuffer.loop = true;
         Timer1.start();
         break;
     }
@@ -103,11 +117,12 @@ void loop() {
   }
 
   // Print some info
-  // unsigned long dmillis = millis()-lastMillis;
-  // if (dmillis>=printPeriodMillis) {
-  //   // Serial.print("ticks:"+String(steppers.timerTicks));
-  //   Serial.print("pos: "+steppers._currentPosition.to_String());
-  //   Serial.println();
-  //   lastMillis = millis();
-  // }
+  unsigned long dmillis = millis()-lastMillis;
+  if (printPeriodMillis and dmillis>=printPeriodMillis) {
+    // Serial.print("ticks:"+String(steppers.timerTicks));
+    Serial.print("pos: ");
+    steppers.getCurrentPosition().print();
+    Serial.println();
+    lastMillis = millis();
+  }
 }
