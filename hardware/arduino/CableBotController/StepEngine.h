@@ -3,36 +3,52 @@
 
 #define CIRCULAR_BUFFER_INT_SAFE // make circular buffers interrupt-compatible
 #define BUFFER_SIZE 512
-#define DEFAULT_TIMER_PERIOD 5000
+#define DEFAULT_TIMER_PERIOD 5000 // in microseconds, approximate!
+#define TIMER_PERIOD_BITSHIFT 4 // bit shift for conversion between uint16_t period and unsigned long period in microseconds
 #include "CircularBuffer.hpp"
 
 // Stepping structure
-struct step_t {
-  uint8_t step = 0b00000000; // the STEP PORT state
-  uint8_t dir = 0b00000000; // the DIR PORT state
-  unsigned long period = DEFAULT_TIMER_PERIOD; // the corresponding period in microseconds
+class step_t {
+  public:
+    uint8_t step = 0b00000000; // the STEP PORT state
+    uint8_t dir = 0b00000000; // the DIR PORT state
+    uint16_t period_bs = DEFAULT_TIMER_PERIOD/(1UL << TIMER_PERIOD_BITSHIFT); // the corresponding bit-shifted period
+    unsigned long getUSPeriod() {return ((unsigned long)period_bs) << TIMER_PERIOD_BITSHIFT;}; // function that returns the corresponding period in microseconds
+    void setUSPeriod(unsigned long period_us) {period_bs = (uint16_t)(period_us >> TIMER_PERIOD_BITSHIFT);}; // function that sets the period_b256 from a period in micros
+    void print();
 };
+
+void step_t::print() {
+  Serial.print("STEP:");
+  printOCTET(step);
+  Serial.print("\t DIR:");
+  printOCTET(dir);
+  Serial.print("\t PERIOD:");
+  Serial.print(period_bs,DEC);
+  Serial.print("uint16");
+  Serial.print('/');
+  Serial.print(getUSPeriod(),DEC);
+  Serial.print("us");
+}
 
 // BUFFER CONTAINING A COLLECTION OF STEPS
 class StepBuffer : public CircularBuffer<step_t, BUFFER_SIZE> {
-  void print();
+  public:
+    void print();
 };
 
-// void StepBuffer::print() {
-//   Serial.println("=== CURRENT BUFFER ===");
-//   for (unsigned long i=0;i<size();i++) {
-//     step_t step = this[i];
-//     Serial.print(i);
-//     Serial.print("\t STEP:");
-//     // printBIN8(step.step);
-//     Serial.print("\t DIR:");
-//     // printBIN8(step.dir);
-//     Serial.print("\t PERIOD:");
-//     Serial.print(step.period,DEC);
-//     Serial.println("us");
-//   }
-//   Serial.println("======================");
-// };
+void StepBuffer::print() {
+  Serial.println("=== CURRENT BUFFER ===");
+  for (unsigned long i=0;i<size();i++) {
+    StepBuffer* self=this;
+    step_t step = this->operator[](i);
+    Serial.print(i);
+    Serial.print("\t");
+    step.print();
+    Serial.println();
+  }
+  Serial.println("======================");
+};
 
 // STEPPER ENGINE CLASS
 class StepEngine {
@@ -41,40 +57,79 @@ class StepEngine {
     bool loopBuffer = true; // keep data on buffers for looping over ?
     unsigned long timerTicks = 0;
     StepperPositions _currentPosition;
-    void run();
     void setup();
+    void step();
+    void update();
 };
 
 // Define the unique stepper engine
-const StepEngine steppers;
-// Function for the interrupt
-void runSteppers() {
-  steppers.run();
-};
+StepEngine steppers;
 
-void StepEngine::run() {
+// Function for the timer interrupt
+void runSteppers() {steppers.step();} ;
+
+void StepEngine::setup() {
+  Timer1.initialize(DEFAULT_TIMER_PERIOD);
+  Timer1.attachInterrupt(runSteppers);
+}
+
+// ENGINE RUN FUNCTION
+void StepEngine::step() {
   // keep track of the number of interrupts
   timerTicks++;
   // RETRIEVE THE NEXT STEP
   if (buffer.isEmpty()) return;
-  step_t nextStep = buffer.pop(); // this might take too much time..
+  step_t nextStep = buffer.shift(); // this might take too much time..
   // SET PORT STATES; DIR before STEP
   PORT_DIR = nextStep.dir;
-  // Step HIGH then WAIT then LOW
-  PORT_STEP = nextStep.step;
-  delayMicroseconds(1);
-  PORT_STEP = 0b00000000;
+  if (DEDGE) // double edge mode, only toggle the step port
+    PORT_STEP ^= nextStep.step; // toggles stepping pins
+  else { // step only on RISING edges, so a full PWM needs to be generated
+    PORT_STEP = nextStep.step; // set pins HIGH
+    delayMicroseconds(1); // wait
+    PORT_STEP = 0b00000000; // // set pins LOW
+  }; 
   // MODIFY THE TIMER PERIOD
-  Timer1.setPeriod(nextStep.period);
+  Timer1.setPeriod(nextStep.getUSPeriod());
   // IF LOOPING, RE-PUSH the current step at the end of the buffer
-  if (loopBuffer) buffer.unshift(nextStep);
+  if (loopBuffer) buffer.push(nextStep);
   // Update the current positions
   for (int8_t b=0;b<8;b++) _currentPosition[b] += (bitRead(nextStep.dir,b) ? bitRead(nextStep.step,b) : -bitRead(nextStep.step,b));
   // Is the buffer empty ?
   if (buffer.isEmpty()) Timer1.setPeriod(DEFAULT_TIMER_PERIOD);
 }
 
-void StepEngine::setup() {
-  Timer1.initialize(DEFAULT_TIMER_PERIOD);
-  Timer1.attachInterrupt(runSteppers);
-}
+// BUFFER FROM SERIAL
+void readHEXBufferFromSerial() {
+  char msg[4];
+  while (Serial.available()) {
+    int nvalid = Serial.readBytes(msg, 4);
+    if (nvalid<4) return ;
+    step_t newStep ;
+    newStep.step = hex2byte(msg[0],msg[1]);//readByteFrom2hex();
+    newStep.dir = hex2byte(msg[2],msg[3]);//readByteFrom2hex();
+    while (!steppers.buffer.available()); // wait for the buffer to have free space
+    steppers.buffer.push(newStep);
+  }
+};
+
+
+// SAMPLE BUFFERS
+// Ramp buffer (accelerates to target speed then decelerate to stanstill)
+void generateRampBuffer(float maxspeed=MAX_SPEED, float acceleration=MAX_ACCELERATION, uint16_t length=BUFFER_SIZE) {
+  step_t newStep;
+  newStep.step = 0b11111111; // all motors turn
+  newStep.dir = 0b11111111; // in the same direction
+  float speed = sqrt(acceleration); // in steps/seconds
+  uint16_t rampSteps = 0; // will keep the number of steps needed to accelerate/deccelerate
+  for (unsigned long i=0;i<length;i++) {
+    speed = min(speed,maxspeed);
+    newStep.setUSPeriod((unsigned long)(1000000.0/speed));
+    steppers.buffer.push(newStep);
+    if (speed<maxspeed or i>length-rampSteps-1) {
+      speed += acceleration/speed;
+      rampSteps++;
+    } 
+    if (i==length/2) acceleration *= -1.0; // start decelerating at half the buffer
+  };
+};

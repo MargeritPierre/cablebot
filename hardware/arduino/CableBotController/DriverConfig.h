@@ -34,6 +34,7 @@ class Drivers {
     int8_t hysteresis_end = 12;   // [-3..12]
     uint16_t rms_current = RMS_CURRENT;  // [0..5000]
     uint8_t microstep = 0;        // [0,1,2,4,8,16,32,64,128,256]
+    uint8_t dedge = DEDGE;        // [0,1,2,4,8,16,32,64,128,256]
     bool en_pwm_mode = true;     // Enable extremely quiet stepping
     bool pwm_autoscale = true;   // run automatic setup of PWM mode
     uint16_t TCOOLTHRS = 0xFFFFF;
@@ -64,7 +65,7 @@ class Drivers {
 };
 
 // Define the unique driver controller
-const Drivers drivers = Drivers(); 
+Drivers drivers; 
 
 void Drivers::setup() {
   // sets up PINs port in OUTPUT mode
@@ -102,6 +103,7 @@ void Drivers::applyConfig() {
     _array[i].toff(off_time);
     _array[i].rms_current(rms_current);
     _array[i].microsteps(microstep);
+    _array[i].dedge(dedge);
     _array[i].en_pwm_mode(en_pwm_mode);
     _array[i].pwm_autoscale(pwm_autoscale);
     _array[i].TCOOLTHRS(TCOOLTHRS);
