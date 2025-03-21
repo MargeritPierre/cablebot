@@ -4,11 +4,12 @@
 #include <TimerOne.h>
 
 #define BAUDRATE 250000
-#define BUFFER_TIMEOUT 10 //milliseconds
-#define MAX_ACCELERATION 20000
-#define MAX_SPEED 4000
+#define SERIAL_TIMEOUT 10 //milliseconds
+#define MICROSTEP 0
+#define MAX_ACCELERATION 5000
+#define MAX_SPEED 1000
 #define N_MOTORS 4  // number of activated motors
-#define RMS_CURRENT 500
+#define RMS_CURRENT 200
 #define DEDGE true // use DEDGE mode ? (STEP on rising AND falling edges)
 
 #include "SerialUtils.h" // defines some usefull functions
@@ -25,7 +26,7 @@ void setup() {
 
   SPI.begin();
   Serial.begin(BAUDRATE);
-  Serial.setTimeout(BUFFER_TIMEOUT);
+  Serial.setTimeout(SERIAL_TIMEOUT);
   while (!Serial);  // Wait for serial port to connect
   Serial.println();
 
@@ -42,7 +43,6 @@ void setup() {
   steppers.setup();
 
   Serial.println("Setup Finished.");
-  // testOperationsOnStepperPositions();
 }
 
 // =================================================================== LOOP
@@ -53,38 +53,42 @@ void loop() {
   if (Serial.available()) { // a new message is available on the serial
     Serial.println("New Message!");
     char header = Serial.read();
+    char sep = Serial.read(); // remove the message separator(':')
     switch (header) {
-      case 'M': // MOVE TO
+      case 'M': { // MOTION
+        StepperPositions nextPositions;
+        for (uint8_t i=0;i<N_MOTORS;i++) {
+          nextPositions[i] = (long)Serial.parseInt();
+          Serial.read(); // remove the separator character
+        };
+        Serial.println("Next Motion: "+nextPositions.to_String());
+        // StepperPositions nextPosition = StepperPositions(motion); 
+        if (steppers.positionsBuffer.isEmpty()) nextPositions = nextPositions + steppers.getCurrentPosition();
+        else nextPositions = nextPositions + steppers.positionsBuffer.last();
         while (!steppers.positionsBuffer.available()); // wait for the positions buffer to have free space
-        long motion[N_MOTORS];
-        // for (uint8_t i=0;i<N_MOTORS;i++) {
-        //   motion[i] = (long)Serial.parseInt();
-        //   Serial.read(); // remove the separator character
-        // };
-        StepperPositions nextPosition = StepperPositions(motion); 
-        // if (steppers.positionsBuffer.isEmpty()) newPosition = newPosition + steppers.getCurrentPosition();
-        // else newPosition = newPosition + steppers.positionsBuffer.last();
-        steppers.positionsBuffer.push(nextPosition);
+        steppers.positionsBuffer.push(nextPositions);
         steppers.positionsBuffer.print();
-        break;
-      case 'E': // ENABLE DRIVERS
+      }; break;
+      case 'E': { // ENABLE DRIVERS
         drivers.enable();
-        break;
-      case 'D': // DISABLE DRIVERS
+      }; break;
+      case 'D': { // DISABLE DRIVERS
         drivers.disable();
-        break;
-      case 'I': // DISABLE DRIVERS
+      }; break;
+      case 'I': { // CHANGE DRIVER RATED COIL CURRENT
         drivers.rms_current = Serial.parseInt();
         drivers.applyConfig();
         Serial.println("DRIVER::RMS_CURRENT set to "+ String(drivers.rms_current));
-        break;
-      case 'P': // PRINT BUFFER
+      }; break;
+      case 'P': { // PRINT BUFFER
         steppers.stepBuffer.print();
-        break;
-      case 'X': // PRINT stepper positions
+      }; break;
+      case 'X': { // PRINT stepper positions
         printPeriodMillis = Serial.parseInt();
-        break;
-      default: // BUFFER-RELATED MESSAGES
+        }; break;
+      case 'B': { // BUFFER-RELATED MESSAGES
+        header = sep; 
+        sep = Serial.read();
         if (1) steppers.stepBuffer.clear();
         else {
           Serial.println("Emptying the buffer...");
@@ -93,10 +97,10 @@ void loop() {
         };
         Timer1.stop(); delay(100);
         switch (header) {
-          case 'B': // Replace the full buffer with an HEX message
-            readHEXBufferFromSerial();
-            break;
-          case 'R': // Ramp buffer
+          case 'S': { // Replace the full buffer with an HEX message
+            readHEXStepBufferFromSerial();
+          }; break;
+          case 'R': { // Ramp buffer
             float maxspeed = MAX_SPEED;
             float acceleration = MAX_ACCELERATION;
             uint16_t length = STEP_BUFFER_SIZE;
@@ -105,12 +109,15 @@ void loop() {
             if (Serial.available()) acceleration = Serial.parseFloat();
             Serial.read();
             if (Serial.available()) length = Serial.parseInt();
-            generateRampBuffer(maxspeed,acceleration,length);
-            break;
+            generateRampStepBuffer(maxspeed,acceleration,length);
+          }; break;
         };
         steppers.stepBuffer.loop = true;
         Timer1.start();
-        break;
+        }; break;
+      default: {
+        Serial.print("Unknown message: "); Serial.print(header); Serial.print(sep); while (Serial.available()) Serial.write(Serial.read());
+        }; break;
     }
     // PRINT BUFFER
     while(Serial.available()) Serial.read(); // empty the serial input
@@ -124,5 +131,5 @@ void loop() {
     steppers.getCurrentPosition().print();
     Serial.println();
     lastMillis = millis();
-  }
+  };
 }

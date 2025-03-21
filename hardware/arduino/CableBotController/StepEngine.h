@@ -1,12 +1,11 @@
 // DEFINES A STEPPING ENGINE BASE ON TIMER INTERRUPTS AND PORT MANIPULATION
 
 
+#define CIRCULAR_BUFFER_INT_SAFE // make circular buffers interrupt-compatible
 #define STEP_BUFFER_SIZE 512
 #define POS_BUFFER_SIZE 64
 #define DEFAULT_TIMER_PERIOD 5000 // in microseconds, approximate!
 #define TIMER_PERIOD_BITSHIFT 4 // bit shift for conversion between uint16_t period and unsigned long period in microseconds
-
-#define CIRCULAR_BUFFER_INT_SAFE // make circular buffers interrupt-compatible
 #include "CircularBuffer.hpp"
 
 // Stepping structure
@@ -37,7 +36,7 @@ void step_t::print() {
 template <class T,size_t N>
 class DataBuffer : public CircularBuffer<T,N> {
   public:
-    bool loop = false; // is the buffer looping ?
+    bool loop = true; // is the buffer looping ?
     void print();
 };
 
@@ -56,18 +55,16 @@ void DataBuffer<T,N>::print() {
 
 // BUFFER CONTAINING A COLLECTION OF STEPS
 typedef DataBuffer<step_t, STEP_BUFFER_SIZE> StepBuffer;
+
 // Buffer containing a collection of stepper positions
 typedef DataBuffer<StepperPositions, POS_BUFFER_SIZE> PositionsBuffer;
 
-
 // STEPPER ENGINE CLASS
 class StepEngine {
-  private:
-    StepperPositions _currentPosition; // the current position
-    unsigned long timerTicks = 0;
   public:
-    StepBuffer stepBuffer; // the next steps to perform
-    PositionsBuffer positionsBuffer; // the next positions to reach
+  public:
+    StepBuffer stepBuffer;
+    PositionsBuffer positionsBuffer;
     void setup();
     void step();
     void update();
@@ -76,6 +73,8 @@ class StepEngine {
     StepperPositions targetPosition() {return positionsBuffer.first();}
     void move(StepperPositions motion);
     void moveTo(StepperPositions position);
+  private:
+    StepperPositions _currentPosition;
 };
 
 // Define the unique stepper engine
@@ -92,7 +91,6 @@ void StepEngine::setup() {
 // ENGINE RUN FUNCTION
 void StepEngine::step() {
   // keep track of the number of interrupts
-  // timerTicks++;
   // RETRIEVE THE NEXT STEP
   if (stepBuffer.isEmpty()) return;
   step_t nextStep = stepBuffer.shift(); // this might take too much time..
@@ -116,7 +114,7 @@ void StepEngine::step() {
 }
 
 // BUFFER FROM SERIAL
-void readHEXBufferFromSerial() {
+void readHEXStepBufferFromSerial() {
   char msg[4];
   while (Serial.available()) {
     int nvalid = Serial.readBytes(msg, 4);
@@ -132,7 +130,7 @@ void readHEXBufferFromSerial() {
 
 // SAMPLE BUFFERS
 // Ramp buffer (accelerates to target speed then decelerate to stanstill)
-void generateRampBuffer(float maxspeed=MAX_SPEED, float acceleration=MAX_ACCELERATION, uint16_t length=STEP_BUFFER_SIZE) {
+void generateRampStepBuffer(float maxspeed=MAX_SPEED, float acceleration=MAX_ACCELERATION, uint16_t length=STEP_BUFFER_SIZE) {
   step_t newStep;
   newStep.step = 0b11111111; // all motors turn
   newStep.dir = 0b11111111; // in the same direction
