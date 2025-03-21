@@ -43,6 +43,9 @@ void setup() {
   steppers.setup();
 
   Serial.println("Setup Finished.");
+
+  // TESTS!
+  // testOperationsOnStepperPositions();
 }
 
 // =================================================================== LOOP
@@ -55,18 +58,18 @@ void loop() {
     char header = Serial.read();
     char sep = Serial.read(); // remove the message separator(':')
     switch (header) {
-      case 'M': { // MOTION
-        StepperPositions nextPositions;
-        for (uint8_t i=0;i<N_MOTORS;i++) {
-          nextPositions[i] = (long)Serial.parseInt();
-          Serial.read(); // remove the separator character
-        };
-        Serial.println("Next Motion: "+nextPositions.to_String());
-        // StepperPositions nextPosition = StepperPositions(motion); 
-        if (steppers.positionsBuffer.isEmpty()) nextPositions = nextPositions + steppers.getCurrentPosition();
-        else nextPositions = nextPositions + steppers.positionsBuffer.last();
-        while (!steppers.positionsBuffer.available()); // wait for the positions buffer to have free space
-        steppers.positionsBuffer.push(nextPositions);
+      case 'F': { // SOME FLOATNG POINT NUMBERS...
+        StepperFloats floats = StepperFloats(Serial);
+        Serial.println("floats: "+floats.to_String());
+      }; break;
+      case 'M': { // RELATIVE MOTION
+        StepperPositions motion = StepperPositions(Serial); // import the motion vector from the serial
+        steppers.move(motion);
+        steppers.positionsBuffer.print();
+      }; break;
+      case 'G': { // RELATIVE MOTION
+        StepperPositions positions = StepperPositions(Serial); // import the motion vector from the serial
+        steppers.moveTo(positions);
         steppers.positionsBuffer.print();
       }; break;
       case 'E': { // ENABLE DRIVERS
@@ -122,6 +125,9 @@ void loop() {
     // PRINT BUFFER
     while(Serial.available()) Serial.read(); // empty the serial input
   }
+
+  // Update steppers
+  steppers.update();
 
   // Print some info
   unsigned long dmillis = millis()-lastMillis;

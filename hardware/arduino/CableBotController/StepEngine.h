@@ -36,7 +36,7 @@ void step_t::print() {
 template <class T,size_t N>
 class DataBuffer : public CircularBuffer<T,N> {
   public:
-    bool loop = true; // is the buffer looping ?
+    bool loop = false; // is the buffer looping ?
     void print();
 };
 
@@ -62,31 +62,68 @@ typedef DataBuffer<StepperPositions, POS_BUFFER_SIZE> PositionsBuffer;
 // STEPPER ENGINE CLASS
 class StepEngine {
   public:
-  public:
     StepBuffer stepBuffer;
     PositionsBuffer positionsBuffer;
+    char stepgen = 'P'; // stepping generation: P:from position buffer, S:from step buffer
     void setup();
     void step();
     void update();
     StepperPositions getCurrentPosition() {noInterrupts(); StepperPositions cp = _currentPosition; interrupts(); return cp;}
     void setCurrentPosition(StepperPositions p) {noInterrupts(); _currentPosition = p; interrupts(); return;}
-    StepperPositions targetPosition() {return positionsBuffer.first();}
+    StepperPositions getTargetPosition() {return positionsBuffer.first();}
     void move(StepperPositions motion);
-    void moveTo(StepperPositions position);
+    void moveTo(StepperPositions positions);
   private:
     StepperPositions _currentPosition;
+    StepperPositions _updatePosition;
 };
 
 // Define the unique stepper engine
 StepEngine steppers;
 
 // Function for the timer interrupt
-void runSteppers() {steppers.step();} ;
+void stepSteppers() {steppers.step();} ;
 
 void StepEngine::setup() {
   Timer1.initialize(DEFAULT_TIMER_PERIOD);
-  Timer1.attachInterrupt(runSteppers);
+  Timer1.attachInterrupt(stepSteppers);
 }
+
+void StepEngine::move(StepperPositions motion) {
+// move relatively to the last planned positions
+  if (positionsBuffer.isEmpty()) moveTo(motion + getCurrentPosition());
+  else moveTo(positionsBuffer.last() + motion);
+};
+
+void StepEngine::moveTo(StepperPositions positions) {
+// move relatively to the last planned positions
+  while (!positionsBuffer.available()); // wait for the positions buffer to have free space
+  positionsBuffer.push(positions);
+};
+
+void StepEngine::update() {
+  if (stepgen=='S') return; // will not update the buffer if step generation is based on it
+  step_t nextStep;
+  while (stepBuffer.available()) { // while there is some room on the step buffer...
+    if (positionsBuffer.isEmpty()) return; // no next position to go !
+    StepperPositions tp = getTargetPosition(); // the next position to approach
+    StepperPositions directions = (tp-_updatePosition).sign();
+    nextStep.dir = StepperBool2Byte(directions > StepperPositions()); // constant direction 
+    while (stepBuffer.available()) { // while there is some room on the step buffer...
+      if ((tp==_updatePosition).all()) { // enough steps have been pushed on the step buffer to reach the target position
+        positionsBuffer.shift();
+        if (positionsBuffer.loop) positionsBuffer.push(tp); // IF LOOPING, RE-PUSH the current position at the end of the buffer
+        break;
+      }
+      // Push a new step to the step buffer
+      StepperBools needsStep = (tp!=_updatePosition);
+      nextStep.step = StepperBool2Byte(needsStep);
+      noInterrupts(); stepBuffer.push(nextStep); interrupts();
+      // Update the position
+      for (uint8_t i=0;i<N_MOTORS;i++) if (needsStep[i]) _updatePosition[i] += directions[i];
+    };
+  };
+};
 
 // ENGINE RUN FUNCTION
 void StepEngine::step() {
@@ -108,7 +145,7 @@ void StepEngine::step() {
   // IF LOOPING, RE-PUSH the current step at the end of the buffer
   if (stepBuffer.loop) stepBuffer.push(nextStep);
   // Update the current positions
-  for (int8_t b=0;b<8;b++) _currentPosition[b] += (bitRead(nextStep.dir,b) ? bitRead(nextStep.step,b) : -bitRead(nextStep.step,b));
+  for (int8_t b=0;b<8;b++) if (bitRead(nextStep.step,b)) _currentPosition[b] += (bitRead(nextStep.dir,b) ? 1 : -1);
   // Is the buffer empty ?
   if (stepBuffer.isEmpty()) Timer1.setPeriod(DEFAULT_TIMER_PERIOD);
 }
