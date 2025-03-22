@@ -12,6 +12,8 @@
 #define RMS_CURRENT 200
 #define DEDGE true // use DEDGE mode ? (STEP on rising AND falling edges)
 
+#include "Array.h" // defines some usefull functions
+
 #include "SerialUtils.h" // defines some usefull functions
 
 #include "DriverConfig.h" // defines the TMC5160 driver controller
@@ -46,6 +48,9 @@ void setup() {
 
   // TESTS!
   // testOperationsOnStepperPositions();
+  // Array<int,4> testArray = {1,2,3,4};
+  // Serial.print("test array: "); testArray.print(); Serial.println();
+  // while(1);
 }
 
 // =================================================================== LOOP

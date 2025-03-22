@@ -66,16 +66,21 @@ class StepEngine {
     PositionsBuffer positionsBuffer;
     char stepgen = 'P'; // stepping generation: P:from position buffer, S:from step buffer
     void setup();
-    void step();
-    void update();
+    void step(); // apply the next buffered step; executed by the timer interrupt
+    void update(); // update and fill the step buffer using the position buffer
     StepperPositions getCurrentPosition() {noInterrupts(); StepperPositions cp = _currentPosition; interrupts(); return cp;}
     void setCurrentPosition(StepperPositions p) {noInterrupts(); _currentPosition = p; interrupts(); return;}
     StepperPositions getTargetPosition() {return positionsBuffer.first();}
     void move(StepperPositions motion);
     void moveTo(StepperPositions positions);
   private:
-    StepperPositions _currentPosition;
-    StepperPositions _updatePosition;
+    StepperPositions _currentPosition; // the current motor step positions
+    StepperPositions _targetPosition; // the current motor step target positions
+    bool _targetPositionReached = true; // has the target position been reached ?
+    StepperPositions _updateMotion; // the currently updated motion vector
+    step_t _updateStep; // the current update step template
+    StepperPositions _updatePosition; // the last updated positions (that should be reached at the current last buffered step)
+    // StepperFloats _updateSpeeds; // the last updated velocity vector
 };
 
 // Define the unique stepper engine
@@ -91,7 +96,7 @@ void StepEngine::setup() {
 
 void StepEngine::move(StepperPositions motion) {
 // move relatively to the last planned positions
-  if (positionsBuffer.isEmpty()) moveTo(motion + getCurrentPosition());
+  if (positionsBuffer.isEmpty()) moveTo(_targetPosition + motion);
   else moveTo(positionsBuffer.last() + motion);
 };
 
@@ -103,24 +108,29 @@ void StepEngine::moveTo(StepperPositions positions) {
 
 void StepEngine::update() {
   if (stepgen=='S') return; // will not update the buffer if step generation is based on it
-  step_t nextStep;
+  delay(200);
   while (stepBuffer.available()) { // while there is some room on the step buffer...
-    if (positionsBuffer.isEmpty()) return; // no next position to go !
-    StepperPositions tp = getTargetPosition(); // the next position to approach
-    StepperPositions directions = (tp-_updatePosition).sign();
-    nextStep.dir = StepperBool2Byte(directions > StepperPositions()); // constant direction 
-    while (stepBuffer.available()) { // while there is some room on the step buffer...
-      if ((tp==_updatePosition).all()) { // enough steps have been pushed on the step buffer to reach the target position
-        positionsBuffer.shift();
-        if (positionsBuffer.loop) positionsBuffer.push(tp); // IF LOOPING, RE-PUSH the current position at the end of the buffer
-        break;
-      }
+    Serial.println("Update StepEngine..");
+    Serial.println("  current update position: "+_updatePosition.to_String());
+    if (_targetPositionReached) {
+      if (positionsBuffer.isEmpty()) return; // no next position to go !
+      _targetPosition = positionsBuffer.shift(); // extract the next targrt position from he buffer
+      if (positionsBuffer.loop) positionsBuffer.push(_targetPosition); // IF LOOPING, RE-PUSH it at the end of the buffer
+      Serial.println("  new target position: "+_targetPosition.to_String());
+      // Compute motion-constant data
+      _updateMotion = _targetPosition - _updatePosition ;
+      _updateStep.dir = StepperBool2Byte(_updateMotion > StepperPositions(0)); // constant direction 
+      _targetPositionReached = false;
+    };
+    while (stepBuffer.available() && !_targetPositionReached) { // while there is some room on the step buffer...
       // Push a new step to the step buffer
-      StepperBools needsStep = (tp!=_updatePosition);
-      nextStep.step = StepperBool2Byte(needsStep);
-      noInterrupts(); stepBuffer.push(nextStep); interrupts();
+      StepperBools needsStep = (_updatePosition != _targetPosition);
+      _updateStep.step = StepperBool2Byte(needsStep);
+      noInterrupts(); stepBuffer.push(_updateStep); interrupts();
       // Update the position
-      for (uint8_t i=0;i<N_MOTORS;i++) if (needsStep[i]) _updatePosition[i] += directions[i];
+      for (uint8_t i=0;i<N_MOTORS;i++) if (needsStep[i]) _updatePosition[i] += (_updateMotion[i] > 0 ? 1 : -1);
+      // Target position reached ?
+      _targetPositionReached = !(needsStep.any());
     };
   };
 };

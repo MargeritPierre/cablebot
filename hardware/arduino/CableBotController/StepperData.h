@@ -6,14 +6,15 @@ class StepperData {
   public:        
     // Constructors
     StepperData() {for (uint8_t i=0;i<N_MOTORS;i++) _array[i] = (T)0;}; // default
-    StepperData(T state[N_MOTORS]) {for (uint8_t i=0;i<N_MOTORS;i++) _array[i] = state[i];}; // construct with array
+    StepperData(T uniform) {for (uint8_t i=0;i<N_MOTORS;i++) _array[i] = uniform;}; // default
+    StepperData(T &state) {for (uint8_t i=0;i<N_MOTORS;i++) _array[i] = state[i];}; // construct with array
     StepperData(T s0,T s1,T s2,T s3) {_array[0] = s0;_array[1] = s1;_array[2] = s2;_array[3] = s3;}; // construct with 4 motors
     StepperData(T s0,T s1,T s2,T s3,T s4,T s5,T s6,T s7) {_array[0]=s0;_array[1]=s1;_array[2]=s2;_array[3]=s3;_array[4]=s4;_array[5]=s5;_array[6]=s6;_array[7]=s7;}; // construct with 8 motors
     StepperData(Stream &S); // construct from the serial
     //Overload the indexing operator
     const T& operator [](uint8_t index) const {return _array[index];};
     T& operator [](uint8_t index) {return _array[index];};
-    // Overload operations
+    // Element-wise operations
     StepperData operator+(StepperData other) {StepperData res; for (uint8_t i=0;i<N_MOTORS;i++) res._array[i] = _array[i]+other._array[i];return res;};
     StepperData operator-(StepperData other) {StepperData res; for (uint8_t i=0;i<N_MOTORS;i++) res._array[i] = _array[i]-other._array[i];return res;};
     StepperData operator*(StepperData other) {StepperData res; for (uint8_t i=0;i<N_MOTORS;i++) res._array[i] = _array[i]*other._array[i];return res;};
@@ -21,9 +22,16 @@ class StepperData {
     StepperData<bool> operator>(StepperData other) {StepperData<bool> res; for (uint8_t i=0;i<N_MOTORS;i++) res[i] = _array[i]>other[i];return res;};
     StepperData<bool> operator==(StepperData other) {StepperData<bool> res; for (uint8_t i=0;i<N_MOTORS;i++) res[i] = _array[i]==other[i];return res;};
     StepperData<bool> operator!=(StepperData other) {StepperData<bool> res; for (uint8_t i=0;i<N_MOTORS;i++) res[i] = _array[i]!=other[i];return res;};
+    StepperData sign() {StepperData res; for (uint8_t i=0;i<N_MOTORS;i++) res._array[i] = T(_array[i]>T(0))-T(_array[i]<T(0)); return res;};
+    // Other functions
     bool all() {for (uint8_t i=0;i<N_MOTORS;i++) if (!_array[i]) return false; return true;};
     bool any() {for (uint8_t i=0;i<N_MOTORS;i++) if (_array[i]) return true; return false;};
-    StepperData sign() {StepperData res; for (uint8_t i=0;i<N_MOTORS;i++) res._array[i] = T(_array[i]>T(0))-T(_array[i]<T(0)); return res;};
+    T sum() {T res=_array[0]; for (uint8_t i=1;i<N_MOTORS;i++) res+=_array[i]; return res;};
+    float norm() {float res=pow(_array[0],2); for (uint8_t i=1;i<N_MOTORS;i++) res+=pow(_array[i],2); return sqrt(res);};
+    // functons defined as macros in Arduino, so we add a '_' to prevent compiler errors
+    StepperData _abs() {StepperData res; for (uint8_t i=0;i<N_MOTORS;i++) res._array[i] = abs(_array[i]); return res;};
+    T _min() {T res=_array[0]; for (uint8_t i=1;i<N_MOTORS;i++) res=min(res,_array[i]); return res;};
+    T _max() {T res=_array[0]; for (uint8_t i=1;i<N_MOTORS;i++) res=max(res,_array[i]); return res;};
     // Printing function
     String to_String();
     void print() {Serial.print(to_String());};
@@ -88,4 +96,9 @@ void testOperationsOnStepperPositions() {
   Serial.println("any(" + x0.to_String() + " == " + x1.to_String() + ") = " + String((x0==x1).any()));
   Serial.print("byte(" + x0.to_String() + " > " + x1.to_String() + ") = ");  printOCTET(StepperBool2Byte(x0>x1)) ; Serial.println();
   Serial.println("sign(" + x0.to_String() + ") = " + x0.sign().to_String());
+  Serial.println("_abs(" + x0.to_String() + ") = " + x0._abs().to_String());
+  Serial.println("_min(" + x0.to_String() + ") = " + String(x0._min()));
+  Serial.println("_max(" + x0.to_String() + ") = " + String(x0._max()));
+  Serial.println("sum(" + x0.to_String() + ") = " + String(x0.sum()));
+  Serial.println("norm(" + x0.to_String() + ") = " + String(x0.norm()));
 };
