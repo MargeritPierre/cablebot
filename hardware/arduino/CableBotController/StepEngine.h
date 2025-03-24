@@ -56,31 +56,42 @@ void DataBuffer<T,N>::print() {
 // BUFFER CONTAINING A COLLECTION OF STEPS
 typedef DataBuffer<step_t, STEP_BUFFER_SIZE> StepBuffer;
 
-// Buffer containing a collection of stepper positions
-typedef DataBuffer<StepperPositions, POS_BUFFER_SIZE> PositionsBuffer;
+// Stepper motion structure: a position and a motion speed
+class StepperMotion : public StepperPositions {
+  using StepperData<long int>::StepperData;
+  public:
+    StepperMotion(StepperData<long int> pos) {for(uint8_t i=0;i<N_MOTORS;i++) this->operator[](i) = pos[i];};
+    float speed = 1000000.0/DEFAULT_TIMER_PERIOD ; // the motion speed in steps/sec
+};
+// Buffer containing a collection of stepper motions (target position and speed)
+typedef DataBuffer<StepperMotion, POS_BUFFER_SIZE> MotionBuffer;
+typedef DataBuffer<StepperPositions, POS_BUFFER_SIZE> motionBuffer;
 
 // STEPPER ENGINE CLASS
 class StepEngine {
   public:
     StepBuffer stepBuffer;
-    PositionsBuffer positionsBuffer;
-    char stepgen = 'P'; // stepping generation: P:from position buffer, S:from step buffer
+    MotionBuffer motionBuffer;
     void setup();
+    void setStepGeneration(char mode); // change the step generation mode
     void step(); // apply the next buffered step; executed by the timer interrupt
     void update(); // update and fill the step buffer using the position buffer
     StepperPositions getCurrentPosition() {noInterrupts(); StepperPositions cp = _currentPosition; interrupts(); return cp;}
     void setCurrentPosition(StepperPositions p) {noInterrupts(); _currentPosition = p; interrupts(); return;}
-    StepperPositions getTargetPosition() {return positionsBuffer.first();}
-    void move(StepperPositions motion);
-    void moveTo(StepperPositions positions);
+    StepperMotion getTargetPosition() {return motionBuffer.first();}
+    void move(StepperMotion motion);
+    void moveTo(StepperMotion positions);
   private:
-    StepperPositions _currentPosition; // the current motor step positions
-    StepperPositions _targetPosition; // the current motor step target positions
-    bool _targetPositionReached = true; // has the target position been reached ?
-    StepperPositions _updateMotion; // the currently updated motion vector
-    step_t _updateStep; // the current update step template
-    StepperPositions _updatePosition; // the last updated positions (that should be reached at the current last buffered step)
-    // StepperFloats _updateSpeeds; // the last updated velocity vector
+    StepperPositions _currentPosition; // the current motor step positions (the most up to date, updated by the timer interrupt)
+    char _stepGeneration = 'M'; // stepping generation: M:from motion buffer, S:from step buffer
+    unsigned long _updateStepsToTarget = 0; // how many update steps need to be pushed on the buffer to plan the target reach ?
+    step_t _updateStep; // the current update step structure (allows to keep the direction byte and period)
+  private: // bresenham line drawing algorithm used for step generation
+    StepperPositions _N_bresenham; // the total number of steps, by motor, corresponding to the current motion
+    long _max_N_bresenham; // the maximum number of steps
+    StepperPositions _D_bresenham; // the distance to the line (some error function)
+    void bresenhamInit(StepperPositions x0, StepperPositions x1);
+    StepperBools bresenhamStep();
 };
 
 // Define the unique stepper engine
@@ -94,45 +105,74 @@ void StepEngine::setup() {
   Timer1.attachInterrupt(stepSteppers);
 }
 
-void StepEngine::move(StepperPositions motion) {
+void StepEngine::setStepGeneration(char mode) {
+// change the step generation mode
+  if (mode==_stepGeneration) return;
+  switch (mode) {
+    case 'M': { // to motionBuffer mode
+      stepBuffer.loop = false;
+      while(!stepBuffer.isEmpty()); // wait for the step buffer to be empty
+    }; break;
+    case 'S': {
+      motionBuffer.loop = false;
+      while(!motionBuffer.isEmpty()) update(); // empty the motion buffer
+      while(!stepBuffer.isEmpty()); // wait for the step buffer to be empty
+    }; break;
+  }
+  _stepGeneration = mode;
+}
+
+void StepEngine::move(StepperMotion motion) {
 // move relatively to the last planned positions
-  if (positionsBuffer.isEmpty()) moveTo(_targetPosition + motion);
-  else moveTo(positionsBuffer.last() + motion);
+  setStepGeneration('M');
+  if (motionBuffer.isEmpty()) moveTo(motion);
+  else moveTo(motion + motionBuffer.last());
 };
 
-void StepEngine::moveTo(StepperPositions positions) {
+void StepEngine::moveTo(StepperMotion positions) {
 // move relatively to the last planned positions
-  while (!positionsBuffer.available()); // wait for the positions buffer to have free space
-  positionsBuffer.push(positions);
+  setStepGeneration('M');
+  while (!motionBuffer.available()); // wait for the positions buffer to have free space
+  motionBuffer.push(positions);
 };
 
 void StepEngine::update() {
-  if (stepgen=='S') return; // will not update the buffer if step generation is based on it
-  delay(200);
+  if (_stepGeneration=='S') return; // will not update the buffer if step generation is based on it
   while (stepBuffer.available()) { // while there is some room on the step buffer...
-    Serial.println("Update StepEngine..");
-    Serial.println("  current update position: "+_updatePosition.to_String());
-    if (_targetPositionReached) {
-      if (positionsBuffer.isEmpty()) return; // no next position to go !
-      _targetPosition = positionsBuffer.shift(); // extract the next targrt position from he buffer
-      if (positionsBuffer.loop) positionsBuffer.push(_targetPosition); // IF LOOPING, RE-PUSH it at the end of the buffer
-      Serial.println("  new target position: "+_targetPosition.to_String());
+    if (_updateStepsToTarget==0) {
+      StepperMotion previousMotion = motionBuffer.shift();
+      if (motionBuffer.loop) motionBuffer.push(previousMotion); // IF LOOPING, RE-PUSH it at the end of the buffer
+      if (motionBuffer.isEmpty()) return; // no next position to go !
+      StepperMotion nextMotion = motionBuffer.first(); // extract the next motion from the buffer
       // Compute motion-constant data
-      _updateMotion = _targetPosition - _updatePosition ;
-      _updateStep.dir = StepperBool2Byte(_updateMotion > StepperPositions(0)); // constant direction 
-      _targetPositionReached = false;
+      _updateStep.dir = StepperBool2Byte(nextMotion > previousMotion); // constant direction 
+      bresenhamInit(previousMotion,nextMotion); // initialize the bresenham stepping scheme
+      _updateStepsToTarget = _max_N_bresenham; // initialize the number of updates to perform
     };
-    while (stepBuffer.available() && !_targetPositionReached) { // while there is some room on the step buffer...
+    while (stepBuffer.available() && _updateStepsToTarget!=0) { // while there is some room on the step buffer...
       // Push a new step to the step buffer
-      StepperBools needsStep = (_updatePosition != _targetPosition);
+      StepperBools needsStep = bresenhamStep(); // which motor needs to be stepped ?
       _updateStep.step = StepperBool2Byte(needsStep);
       noInterrupts(); stepBuffer.push(_updateStep); interrupts();
-      // Update the position
-      for (uint8_t i=0;i<N_MOTORS;i++) if (needsStep[i]) _updatePosition[i] += (_updateMotion[i] > 0 ? 1 : -1);
-      // Target position reached ?
-      _targetPositionReached = !(needsStep.any());
+      // An update step has been added
+      _updateStepsToTarget--;
     };
   };
+};
+
+// Bresenham step
+void StepEngine::bresenhamInit(StepperPositions x0, StepperPositions x1) {
+  _N_bresenham = (x1-x0)._abs();
+  _max_N_bresenham = _N_bresenham._max();
+  _D_bresenham = _N_bresenham*2 - _max_N_bresenham;
+};
+
+// Bresenham step
+StepperBools StepEngine::bresenhamStep() {
+  StepperBools needsStep = _D_bresenham > 0 ;
+  for (uint8_t i=0;i<N_MOTORS;i++) if (needsStep[i]) _D_bresenham[i] -= _max_N_bresenham*2;
+  _D_bresenham = _D_bresenham + _N_bresenham*2;
+  return needsStep;
 };
 
 // ENGINE RUN FUNCTION
@@ -175,7 +215,7 @@ void readHEXStepBufferFromSerial() {
 };
 
 
-// SAMPLE BUFFERS
+// SAMPLE STEP BUFFERS
 // Ramp buffer (accelerates to target speed then decelerate to stanstill)
 void generateRampStepBuffer(float maxspeed=MAX_SPEED, float acceleration=MAX_ACCELERATION, uint16_t length=STEP_BUFFER_SIZE) {
   step_t newStep;
@@ -194,3 +234,25 @@ void generateRampStepBuffer(float maxspeed=MAX_SPEED, float acceleration=MAX_ACC
     if (i==length/2) acceleration *= -1.0; // start decelerating at half the buffer
   };
 };
+
+
+// SAMPLE POSITION BUFFERS
+void generateSinMotion() {
+// Generate sinusoidal motion
+  // steppers.motionBuffer.loop = false;
+  // while (!steppers.positonsBuffer.isEmpty()) steppers.update(); // empty the current position buffer
+  steppers.motionBuffer.clear(); // empty the current motion buffer
+  steppers.motionBuffer.loop = true;
+  const float dt = 2.0*3.141651/float(POS_BUFFER_SIZE);
+  const float nSteps = 100.0;
+  StepperMotion nextPos;
+  for (uint8_t t=0;t<POS_BUFFER_SIZE;t++) {
+    for (uint8_t i=0;i<N_MOTORS;i++) {
+      float phi = float(t); //(i+1)*t;
+      nextPos[i] = nSteps*sin(dt*phi);
+    }
+    steppers.moveTo(nextPos);
+  }
+  steppers.motionBuffer.print();
+};
+

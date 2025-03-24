@@ -14,16 +14,32 @@ class StepperData {
     //Overload the indexing operator
     const T& operator [](uint8_t index) const {return _array[index];};
     T& operator [](uint8_t index) {return _array[index];};
+    // array-scalar operatons
+    StepperData operator+(T other) {StepperData res; for (uint8_t i=0;i<N_MOTORS;i++) res._array[i] = _array[i]+other;return res;};
+    StepperData operator-(T other) {StepperData res; for (uint8_t i=0;i<N_MOTORS;i++) res._array[i] = _array[i]-other;return res;};
+    StepperData operator*(T other) {StepperData res; for (uint8_t i=0;i<N_MOTORS;i++) res._array[i] = _array[i]*other;return res;};
+    StepperData operator/(T other) {StepperData res; for (uint8_t i=0;i<N_MOTORS;i++) res._array[i] = _array[i]/other;return res;};
+    StepperData<bool> operator>(T other) {StepperData<bool> res; for (uint8_t i=0;i<N_MOTORS;i++) res[i] = _array[i]>other;return res;};
+    StepperData<bool> operator>=(T other) {StepperData<bool> res; for (uint8_t i=0;i<N_MOTORS;i++) res[i] = _array[i]>=other;return res;};
+    StepperData<bool> operator<(T other) {StepperData<bool> res; for (uint8_t i=0;i<N_MOTORS;i++) res[i] = _array[i]<other;return res;};
+    StepperData<bool> operator<=(T other) {StepperData<bool> res; for (uint8_t i=0;i<N_MOTORS;i++) res[i] = _array[i]<=other;return res;};
+    StepperData<bool> operator==(T other) {StepperData<bool> res; for (uint8_t i=0;i<N_MOTORS;i++) res[i] = _array[i]==other;return res;};
+    StepperData<bool> operator!=(T other) {StepperData<bool> res; for (uint8_t i=0;i<N_MOTORS;i++) res[i] = _array[i]!=other;return res;};
     // Element-wise operations
     StepperData operator+(StepperData other) {StepperData res; for (uint8_t i=0;i<N_MOTORS;i++) res._array[i] = _array[i]+other._array[i];return res;};
     StepperData operator-(StepperData other) {StepperData res; for (uint8_t i=0;i<N_MOTORS;i++) res._array[i] = _array[i]-other._array[i];return res;};
     StepperData operator*(StepperData other) {StepperData res; for (uint8_t i=0;i<N_MOTORS;i++) res._array[i] = _array[i]*other._array[i];return res;};
     StepperData operator/(StepperData other) {StepperData res; for (uint8_t i=0;i<N_MOTORS;i++) res._array[i] = _array[i]/other._array[i];return res;};
     StepperData<bool> operator>(StepperData other) {StepperData<bool> res; for (uint8_t i=0;i<N_MOTORS;i++) res[i] = _array[i]>other[i];return res;};
+    StepperData<bool> operator>=(StepperData other) {StepperData<bool> res; for (uint8_t i=0;i<N_MOTORS;i++) res[i] = _array[i]>=other[i];return res;};
+    StepperData<bool> operator<(StepperData other) {StepperData<bool> res; for (uint8_t i=0;i<N_MOTORS;i++) res[i] = _array[i]<other[i];return res;};
+    StepperData<bool> operator<=(StepperData other) {StepperData<bool> res; for (uint8_t i=0;i<N_MOTORS;i++) res[i] = _array[i]<=other[i];return res;};
     StepperData<bool> operator==(StepperData other) {StepperData<bool> res; for (uint8_t i=0;i<N_MOTORS;i++) res[i] = _array[i]==other[i];return res;};
     StepperData<bool> operator!=(StepperData other) {StepperData<bool> res; for (uint8_t i=0;i<N_MOTORS;i++) res[i] = _array[i]!=other[i];return res;};
+    StepperData operator++() {for (uint8_t i=0;i<N_MOTORS;i++) _array[i]++;return *this;};
+    StepperData operator--() {for (uint8_t i=0;i<N_MOTORS;i++) _array[i]--;return *this;};
     StepperData sign() {StepperData res; for (uint8_t i=0;i<N_MOTORS;i++) res._array[i] = T(_array[i]>T(0))-T(_array[i]<T(0)); return res;};
-    // Other functions
+    // Accumulation functions functions
     bool all() {for (uint8_t i=0;i<N_MOTORS;i++) if (!_array[i]) return false; return true;};
     bool any() {for (uint8_t i=0;i<N_MOTORS;i++) if (_array[i]) return true; return false;};
     T sum() {T res=_array[0]; for (uint8_t i=1;i<N_MOTORS;i++) res+=_array[i]; return res;};
@@ -33,17 +49,28 @@ class StepperData {
     T _min() {T res=_array[0]; for (uint8_t i=1;i<N_MOTORS;i++) res=min(res,_array[i]); return res;};
     T _max() {T res=_array[0]; for (uint8_t i=1;i<N_MOTORS;i++) res=max(res,_array[i]); return res;};
     // Printing function
-    String to_String();
+    String to_String(char lbl='x');
     void print() {Serial.print(to_String());};
   private:
     T _array[N_MOTORS];
 };
 
 template <class T>
-String StepperData<T>::to_String() {
-  String str = "["; 
-  for (uint8_t i=0;i<N_MOTORS;i++) str += String(_array[i]) + ",";
-  return str + "]"; 
+String StepperData<T>::to_String(char lbl='x') {
+// old version
+  // String str = "["; 
+  // for (uint8_t i=0;i<N_MOTORS;i++) str += String(_array[i]) + ",";
+  // return str + "]"; 
+// new version
+  String str; 
+  for (uint8_t i=0;i<N_MOTORS;i++) {
+    if (i>0) str += '\t';
+    str += lbl;
+    str += String(i);
+    str += ':';
+    str += String(_array[i]);
+  }
+  return str; 
 };
 
 // Retrieve StepperData from serial
@@ -64,6 +91,9 @@ StepperData<float>::StepperData(Stream &S) {
 
 // Used for integer position, motion, in steps...
 typedef StepperData<long> StepperPositions; // easier to do than class derivation!
+// class StepperPositions : public StepperData<long> {
+//   using StepperData<long int>::StepperData;
+// };
 // Used for loads, speeds, lengths...
 typedef StepperData<float> StepperFloats; // easier to do than class derivation!
 // Used for logical states...

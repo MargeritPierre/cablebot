@@ -68,14 +68,14 @@ void loop() {
         Serial.println("floats: "+floats.to_String());
       }; break;
       case 'M': { // RELATIVE MOTION
-        StepperPositions motion = StepperPositions(Serial); // import the motion vector from the serial
+        StepperMotion motion = StepperMotion(Serial); // import the motion vector from the serial
         steppers.move(motion);
-        steppers.positionsBuffer.print();
+        steppers.motionBuffer.print();
       }; break;
       case 'G': { // RELATIVE MOTION
-        StepperPositions positions = StepperPositions(Serial); // import the motion vector from the serial
+        StepperMotion positions = StepperMotion(Serial); // import the motion vector from the serial
         steppers.moveTo(positions);
-        steppers.positionsBuffer.print();
+        steppers.motionBuffer.print();
       }; break;
       case 'E': { // ENABLE DRIVERS
         drivers.enable();
@@ -123,6 +123,13 @@ void loop() {
         steppers.stepBuffer.loop = true;
         Timer1.start();
         }; break;
+      case 'T': { // TESTS!
+        String testCase = Serial.readString();
+        testCase.trim(); // remove end of line, whitespaces etc..
+        if (testCase=="test") Serial.println("TEST!");
+        else if(testCase=="sin") generateSinMotion();
+        else Serial.println("Unknown Test: "+testCase);
+        }; break;
       default: {
         Serial.print("Unknown message: "); Serial.print(header); Serial.print(sep); while (Serial.available()) Serial.write(Serial.read());
         }; break;
@@ -138,7 +145,7 @@ void loop() {
   unsigned long dmillis = millis()-lastMillis;
   if (printPeriodMillis and dmillis>=printPeriodMillis) {
     // Serial.print("ticks:"+String(steppers.timerTicks));
-    Serial.print("pos: ");
+    // Serial.print("pos: ");
     steppers.getCurrentPosition().print();
     Serial.println();
     lastMillis = millis();
