@@ -14,7 +14,8 @@
             {
                 "imports": {
                     "three": "https://threejs.org/build/three.module.js",
-                    "three/addons/": "https://threejs.org/examples/jsm/"
+                    "three/addons/": "https://threejs.org/examples/jsm/",
+                    "simplewebserial": "./simple-web-serial.min.js"
                 }
             }
         </script>
@@ -31,6 +32,7 @@
             import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
             import { TransformControls } from 'three/addons/controls/TransformControls.js';
 			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+            import * as SWS from 'simplewebserial';
 
             // PARAMETERS
             const Lx = 2000; const Ly = 2000; const Lz = 2000; // robot frame
@@ -218,7 +220,7 @@
             // PARAMETER GUI
             const gui = new GUI();
             const config = {
-                sendPositions:true,
+                sendPositions:false,
                 acceleration:10000,
                 maxspeed:2000,
             };
@@ -227,6 +229,14 @@
                 console.log( 'acc:' + value );
             } ).listen();
             gui.add(config,'maxspeed',100,10000).listen();
+
+
+            // SERIAL COMMUNICATION
+            const connection = SimpleWebSerial.setupSerialConnection({
+                baudRate:250000,
+                requestAccessOnPageLoad: true,
+            });
+            connection.on('hexadecimal', (value) => { console.log(value) });
 
             
             // ANIMATION FUNCTION
@@ -242,10 +252,16 @@
                 // Update cables
                 updateCablePositions();
                 updateCableLengths();
-                if (config.sendPositions) console.log(cableLengths) ;
+                if (config.sendPositions) {
+                    // console.log(cableLengths) ;
+                    const r = cableLengths[0];
+                    const g = cableLengths[1];
+                    const b = cableLengths[2];
+                    let rgb = {r, g, b}
+                    connection.send("move", rgb);
+                }
 
                 renderer.render( scene, camera );
-                // console.log(camera)
             };
 
             animate();

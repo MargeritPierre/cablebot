@@ -48,6 +48,10 @@ class StepperData {
     StepperData _abs() {StepperData res; for (uint8_t i=0;i<N_MOTORS;i++) res._array[i] = abs(_array[i]); return res;};
     T _min() {T res=_array[0]; for (uint8_t i=1;i<N_MOTORS;i++) res=min(res,_array[i]); return res;};
     T _max() {T res=_array[0]; for (uint8_t i=1;i<N_MOTORS;i++) res=max(res,_array[i]); return res;};
+    // Data type conversion
+    StepperData<float>  _float() {StepperData<float> res; for (uint8_t i=0;i<N_MOTORS;i++) res[i] = float(_array[i]);return res;};
+    StepperData<int> _int() {StepperData<int> res; for (uint8_t i=0;i<N_MOTORS;i++) res[i] = int(_array[i]);return res;};
+    StepperData<long> _long() {StepperData<long> res; for (uint8_t i=0;i<N_MOTORS;i++) res[i] = long(_array[i]);return res;};
     // Printing function
     String to_String(char lbl='x');
     void print() {Serial.print(to_String());};

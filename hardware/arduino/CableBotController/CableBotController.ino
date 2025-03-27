@@ -4,14 +4,14 @@
 #include <TimerOne.h>
 
 #define BAUDRATE 250000
-#define SERIAL_TIMEOUT 10 //milliseconds
+#define SERIAL_TIMEOUT 1000 //milliseconds
 #define MICROSTEP 0
 #define MAX_ACCELERATION 5000
-#define MAX_SPEED 1000
+#define MAX_SPEED 4000
+#define MAX_IMMEDIATE_SPEED_CHANGE 10
 #define N_MOTORS 4  // number of activated motors
-#define RMS_CURRENT 200
+#define RMS_CURRENT 1500
 #define DEDGE true // use DEDGE mode ? (STEP on rising AND falling edges)
-
 #include "Array.h" // defines some usefull functions
 
 #include "SerialUtils.h" // defines some usefull functions
@@ -21,6 +21,8 @@
 #include "StepperData.h" // defines objects that describe the state of the stepper motors
 
 #include "StepEngine.h" // defines the engine that generates the signals for the steppers
+
+#include "WebSerial.h"
 
 // =================================================================== SETUP
 void setup() {
@@ -43,8 +45,10 @@ void setup() {
 
   // Initialize stepper engine
   steppers.setup();
+  
+  web.setup();
 
-  Serial.println("Setup Finished.");
+  // Serial.println("Setup Finished.");
 
   // TESTS!
   // testOperationsOnStepperPositions();
@@ -58,7 +62,9 @@ unsigned long lastMillis = 0;
 unsigned long printPeriodMillis = 0;
 void loop() {
 
-  if (Serial.available()) { // a new message is available on the serial
+  web.update();
+
+  if (0 and Serial.available()) { // a new message is available on the serial
     Serial.println("New Message!");
     char header = Serial.read();
     char sep = Serial.read(); // remove the message separator(':')
@@ -128,6 +134,7 @@ void loop() {
         testCase.trim(); // remove end of line, whitespaces etc..
         if (testCase=="test") Serial.println("TEST!");
         else if(testCase=="sin") generateSinMotion();
+        else if(testCase=="bounce") generateBounceMotion();
         else Serial.println("Unknown Test: "+testCase);
         }; break;
       default: {
@@ -144,10 +151,10 @@ void loop() {
   // Print some info
   unsigned long dmillis = millis()-lastMillis;
   if (printPeriodMillis and dmillis>=printPeriodMillis) {
-    // Serial.print("ticks:"+String(steppers.timerTicks));
-    // Serial.print("pos: ");
-    steppers.getCurrentPosition().print();
-    Serial.println();
+    web.log("POS\t"+steppers.getCurrentPosition().to_String());
+    web.log("Motion Buffer Size: "+String(steppers.motionBuffer.size()));
+    web.log("Step Buffer Size: "+String(steppers.stepBuffer.size()));
+    // steppers.getCurrentPosition().print(); Serial.println();
     lastMillis = millis();
   };
 }
