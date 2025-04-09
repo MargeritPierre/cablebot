@@ -4,10 +4,17 @@
 #include <TimerOne.h>
 
 #define BAUDRATE 250000
+#define SERIAL_TIMEOUT 1000 //milliseconds
+#define MICROSTEP 0
 #define MAX_ACCELERATION 5000
-#define MAX_SPEED 1000
+#define MAX_SPEED 4000
+#define MAX_IMMEDIATE_SPEED_CHANGE 10
 #define N_MOTORS 4  // number of activated motors
-#define RMS_CURRENT 500
+#define RMS_CURRENT 1500
+#define DEDGE true // use DEDGE mode ? (STEP on rising AND falling edges)
+#include "Array.h" // defines some usefull functions
+
+#include "SerialUtils.h" // defines some usefull functions
 
 #include "DriverConfig.h" // defines the TMC5160 driver controller
 
@@ -15,18 +22,21 @@
 
 #include "StepEngine.h" // defines the engine that generates the signals for the steppers
 
+#include "WebSerial.h"
+
 // =================================================================== SETUP
 void setup() {
   digitalWrite(LED_BUILTIN,LOW) ;
 
   SPI.begin();
   Serial.begin(BAUDRATE);
+  Serial.setTimeout(SERIAL_TIMEOUT);
   while (!Serial);  // Wait for serial port to connect
   Serial.println();
 
   // INITIALIZE TMC5160 DRIVERS
   drivers.setup();
-  drivers.testConnection(); // optional
+  // drivers.testConnection(); // optional
   drivers.applyConfig();
   drivers.enable();
 
@@ -35,124 +45,116 @@ void setup() {
 
   // Initialize stepper engine
   steppers.setup();
+  
+  web.setup();
 
-  Serial.println("Setup Finished.");
+  // Serial.println("Setup Finished.");
+
+  // TESTS!
+  // testOperationsOnStepperPositions();
+  // Array<int,4> testArray = {1,2,3,4};
+  // Serial.print("test array: "); testArray.print(); Serial.println();
+  // while(1);
 }
 
 // =================================================================== LOOP
 unsigned long lastMillis = 0;
-unsigned long printPeriodMillis = 100;
+unsigned long printPeriodMillis = 0;
 void loop() {
 
-  if (Serial.available()) { // a new buffer has been sent
-    Timer1.stop(); delay(100);
-    steppers.buffer.clear();
-    // CONTINUOUS ROTATION
-      // for (unsigned long i=0;i<BUFFER_SIZE/2;i++) {
-      //   step_t newStep ;
-      //   newStep.step = 0b00001111;//random(255);//0b00000000;
-      //   newStep.dir = 0b00001111;//random(255);//0b00000000;
-      //   float speed = float(MAX_SPEED)*2.0*float(i)/float(BUFFER_SIZE);
-      //   newStep.period = long(1000000.0/speed); //random(minTimerDelay,maxTimerDelay);
-      //   stepBuffer.unshift(newStep);
-      // };
-      // for (unsigned long i=BUFFER_SIZE/2;i>0;i--) {
-      //   step_t newStep ;
-      //   newStep.step = 0b00001111;//random(255);//0b00000000;
-      //   newStep.dir = 0b00001111;//random(255);//0b00000000;
-      //   float speed = float(MAX_SPEED)*2.0*float(i)/float(BUFFER_SIZE);
-      //   newStep.period = long(1000000.0/speed); //random(minTimerDelay,maxTimerDelay);
-      //   stepBuffer.unshift(newStep);
-      // };
-    // RANDOM BUFFER
-      // for (unsigned long i=0;i<BUFFER_SIZE;i++) {
-      //   step_t newStep ;
-      //   newStep.step = random(255);//0b00000000;
-      //   newStep.dir = random(255);//0b00000000;
-      //   newStep.period = 10000; //random(minTimerDelay,maxTimerDelay);
-      //   stepBuffer.unshift(newStep);
-      // }
-    // BUFFER FROM SERIAL
-    while (Serial.available()>=2) {
-      byte buffer[2];
-      step_t newStep ;
-      newStep.step = Serial.read();
-      newStep.dir = Serial.read();
-      // newStep.period = Serial.readByte();
-      while (!steppers.buffer.available()); // wait for the buffer to have free space
-      steppers.buffer.unshift(newStep);
+  web.update();
+
+  if (0 and Serial.available()) { // a new message is available on the serial
+    Serial.println("New Message!");
+    char header = Serial.read();
+    char sep = Serial.read(); // remove the message separator(':')
+    switch (header) {
+      case 'F': { // SOME FLOATNG POINT NUMBERS...
+        StepperFloats floats = StepperFloats(Serial);
+        Serial.println("floats: "+floats.to_String());
+      }; break;
+      case 'M': { // RELATIVE MOTION
+        StepperMotion motion = StepperMotion(Serial); // import the motion vector from the serial
+        steppers.move(motion);
+        steppers.motionBuffer.print();
+      }; break;
+      case 'G': { // RELATIVE MOTION
+        StepperMotion positions = StepperMotion(Serial); // import the motion vector from the serial
+        steppers.moveTo(positions);
+        steppers.motionBuffer.print();
+      }; break;
+      case 'E': { // ENABLE DRIVERS
+        drivers.enable();
+      }; break;
+      case 'D': { // DISABLE DRIVERS
+        drivers.disable();
+      }; break;
+      case 'I': { // CHANGE DRIVER RATED COIL CURRENT
+        drivers.rms_current = Serial.parseInt();
+        drivers.applyConfig();
+        Serial.println("DRIVER::RMS_CURRENT set to "+ String(drivers.rms_current));
+      }; break;
+      case 'P': { // PRINT BUFFER
+        steppers.stepBuffer.print();
+      }; break;
+      case 'X': { // PRINT stepper positions
+        printPeriodMillis = Serial.parseInt();
+        }; break;
+      case 'B': { // BUFFER-RELATED MESSAGES
+        header = sep; 
+        sep = Serial.read();
+        if (1) steppers.stepBuffer.clear();
+        else {
+          Serial.println("Emptying the buffer...");
+          steppers.stepBuffer.loop = false;
+          while (!steppers.stepBuffer.isEmpty()); // wait for the buffer to be empty
+        };
+        Timer1.stop(); delay(100);
+        switch (header) {
+          case 'S': { // Replace the full buffer with an HEX message
+            readHEXStepBufferFromSerial();
+          }; break;
+          case 'R': { // Ramp buffer
+            float maxspeed = MAX_SPEED;
+            float acceleration = MAX_ACCELERATION;
+            uint16_t length = STEP_BUFFER_SIZE;
+            if (Serial.available()) maxspeed = Serial.parseFloat();
+            Serial.read();
+            if (Serial.available()) acceleration = Serial.parseFloat();
+            Serial.read();
+            if (Serial.available()) length = Serial.parseInt();
+            generateRampStepBuffer(maxspeed,acceleration,length);
+          }; break;
+        };
+        steppers.stepBuffer.loop = true;
+        Timer1.start();
+        }; break;
+      case 'T': { // TESTS!
+        String testCase = Serial.readString();
+        testCase.trim(); // remove end of line, whitespaces etc..
+        if (testCase=="test") Serial.println("TEST!");
+        else if(testCase=="sin") generateSinMotion();
+        else if(testCase=="bounce") generateBounceMotion();
+        else Serial.println("Unknown Test: "+testCase);
+        }; break;
+      default: {
+        Serial.print("Unknown message: "); Serial.print(header); Serial.print(sep); while (Serial.available()) Serial.write(Serial.read());
+        }; break;
     }
     // PRINT BUFFER
     while(Serial.available()) Serial.read(); // empty the serial input
-    printBuffer();
-    Timer1.start();
   }
+
+  // Update steppers
+  steppers.update();
 
   // Print some info
   unsigned long dmillis = millis()-lastMillis;
-  if (dmillis>=printPeriodMillis) {
-    Serial.print("ticks:"+String(steppers.timerTicks));
-    Serial.print("\t pos: "+steppers._currentPosition.to_String());
-    Serial.println();
+  if (printPeriodMillis and dmillis>=printPeriodMillis) {
+    web.log("POS\t"+steppers.getCurrentPosition().to_String());
+    web.log("Motion Buffer Size: "+String(steppers.motionBuffer.size()));
+    web.log("Step Buffer Size: "+String(steppers.stepBuffer.size()));
+    // steppers.getCurrentPosition().print(); Serial.println();
     lastMillis = millis();
-  }
-}
-
-
-// =================================================================== STEP INTERRUPT
-// void step() {
-//   // keep track of the number of interrupts
-//   timerTicks++;
-//   // RETRIEVE THE NEXT STEP
-//   if (stepBuffer.isEmpty()) return;
-//   step_t nextStep = stepBuffer.pop(); // this might take too much time..
-//   // SET PORT STATES; DIR before STEP
-//   PORT_DIR = nextStep.dir;
-//   PORT_STEP = nextStep.step;
-//   delayMicroseconds(2);
-//   PORT_STEP =  0b00000000;
-//   // MODIFY THE TIMER PERIOD
-//   Timer1.setPeriod(nextStep.period);
-//   // IF LOOPING, RE-PUSH the current step at the end of the buffer
-//   if (loopBuffer) stepBuffer.unshift(nextStep);
-//   // Update the current positions
-//   for (int8_t b=0;b<8;b++) currentPosition[b] += (bitRead(nextStep.dir,b) ? bitRead(nextStep.step,b) : -bitRead(nextStep.step,b));
-//   // Is the buffer empty ?
-//   if (stepBuffer.isEmpty()) Timer1.setPeriod(defaultStep.period);
-// }
-
-
-// =================================================================== PRINT FUNCTIONS
-void printBuffer() {
-  Serial.println("=== CURRENT BUFFER ===");
-  for (unsigned long i=0;i<steppers.buffer.size();i++) {
-    step_t step = steppers.buffer[i];
-    Serial.print(i);
-    Serial.print("\t STEP:");
-    printBIN8(step.step);
-    Serial.print("\t DIR:");
-    printBIN8(step.dir);
-    Serial.print("\t PERIOD:");
-    Serial.print(step.period,DEC);
-    Serial.println("us");
-  }
-  Serial.println("======================");
-}
-
-void printBIN8(uint8_t B8) {
-    for (int b=0;b<8;b++) Serial.print(bitRead(B8,b),BIN);
-}
-
-void printPosition(long pos[8]){
-  for (int8_t b=0;b<8;b++) {
-    Serial.print("\t P");
-    Serial.print(b);
-    Serial.print(":");
-    Serial.print(pos[b]);
-  }
-}
-
-// =================================================================== OTHER FUNCTIONS
-void bresenham(long x0[8],long x1[8]) {
-  // which coordinate is the master ?
+  };
 }
