@@ -1,8 +1,8 @@
 
 // Convert ascii character to binary
 unsigned char ascii2hex(unsigned char c) {
-  if (c >= 0x30 and c <= 0x39) return c - 0x30;
-  if (c >= 0x41 and c <= 0x46) return c - 0x37;
+  if (c >= 0x30 and c <= 0x39) return c - 0x30; // 0->9
+  if (c >= 0x41 and c <= 0x46) return c - 0x37; // A->F
   return -1;
 };
 

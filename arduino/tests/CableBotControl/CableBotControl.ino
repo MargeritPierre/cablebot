@@ -5,8 +5,8 @@
 
 #define BAUDRATE 250000
 #define N_MOTORS 4  // number of activated motors
-#define MAX_ACCELERATION 5000
-#define MAX_SPEED 3000
+#define MAX_ACCELERATION 1600
+#define MAX_SPEED 1600
 
 #include "DriverConfig.h"
 Drivers drivers = Drivers();
@@ -18,20 +18,22 @@ Steppers steppers = Steppers();
 
 
 // ==================4=====================================================================
-StepperPositions initialMotion = {3,3,3,3}; // helps to apply some pre-tension
+StepperPositions initialMotion = {0,0,0,0}; // helps to apply some pre-tension
 StepperPositions initialPositions = {0,0,0,0};
-long dL = 1000;  // some path motion length
+long dL = 1600;  // some path motion length
 StepperPositions path[] = {
-  {-dL,-dL,dL,dL}, // +X
+  {0,dL,0,dL}, // +X
   {0,0,0,0}, // back to origin
-  {dL,-dL,dL,-dL}, // +Z
-  {0,0,0,0}, // back to origin
+  // {-dL,-dL,dL,dL}, // +X
+  // {0,0,0,0}, // back to origin
+  // {dL,-dL,dL,-dL}, // +Z
+  // {0,0,0,0}, // back to origin
   // { -dL, -dL, -dL, -dL },  // pre-tension
   // { 0, 0, 0, 0 },      // back to origin
 };
 const int nPath = sizeof(path) / sizeof(path[0]);
 int nextPtInPath = 0;
-bool followPath = true;
+bool followPath = false;
 
 // =======================================================================================
 int printPeriod = 100; // millisecs
@@ -61,9 +63,9 @@ void setup() {
   while (!steppers.positionsReached()) steppers.run();
   steppers.setCurrentPositions(initialPositions);
 
-  // Wait for serial trigger
-  while(!Serial.available());
-  Serial.flush();
+//   // Wait for serial trigger
+//   while(!Serial.available());
+//   Serial.flush();
 }
 
 
@@ -71,11 +73,18 @@ void setup() {
 // =======================================================================================
 void loop() {
 
-  // Go to next point on path
-  if (steppers.positionsReached()) {
-    steppers.moveTo(path[nextPtInPath]);
-    nextPtInPath = (nextPtInPath + 1) % nPath;
-  }
+  if (Serial.available()) followPath = !followPath;
+  while (Serial.available()) Serial.read();
+
+  if (followPath) {
+    // Go to next point on path
+    if (steppers.positionsReached()) {
+      steppers.moveTo(path[nextPtInPath]);
+      nextPtInPath = (nextPtInPath + 1) % nPath;
+    }
+  } else {
+    steppers.moveTo(initialPositions);
+  };
 
   // Run the motors
   steppers.run();

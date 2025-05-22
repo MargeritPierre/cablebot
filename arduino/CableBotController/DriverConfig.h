@@ -35,8 +35,8 @@ class Drivers {
     uint16_t rms_current = RMS_CURRENT;  // [0..5000]
     uint8_t microstep = MICROSTEP;        // [0,1,2,4,8,16,32,64,128,256]
     uint8_t dedge = DEDGE;        // [0,1,2,4,8,16,32,64,128,256]
-    bool en_pwm_mode = true;     // Enable extremely quiet stepping
-    bool pwm_autoscale = true;   // run automatic setup of PWM mode
+    bool en_pwm_mode = false;     // Enable extremely quiet stepping
+    bool pwm_autoscale = false;   // run automatic setup of PWM mode
     uint16_t TCOOLTHRS = 0xFFFFF;
     uint16_t TPWMTHRS = 0x0;
     uint16_t THIGH = 0x0;
