@@ -9,6 +9,8 @@ Il faut avant tout installer les librairies manquantes disponibles au téléchar
 > CircularBuffer
 > Simple Web Serial
 
+Configurer l'arduino au baud rate 250000 
+
 ## Utilisation avec page web
 1. décommenter `// #include "WebSerial.h"`
 2. décommenter `//  web.setup();`
