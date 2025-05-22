@@ -4,6 +4,7 @@
 #include <TimerOne.h>
 
 #define BAUDRATE 250000
+#define USE_WEBSERIAL true
 #define SERIAL_TIMEOUT 1000 //milliseconds
 #define MICROSTEP 16
 #define MAX_ACCELERATION 5000
@@ -24,7 +25,7 @@
 
 #include "Music.h"
 
-// #include "WebSerial.h"
+#include "WebSerial.h"
 
 // =================================================================== SETUP
 void setup() {
@@ -49,7 +50,7 @@ void setup() {
   steppers.setup();
   
   // WEB SERIAL MODE
-  // web.setup();
+  web.setup();
 
   // for (int i=0;i<10;i++) { web.serial.sendData("Setup!"); delay(100); };
   // while(1) if (Serial.available()) Serial.print(char(Serial.read()));
@@ -91,9 +92,9 @@ unsigned long lastMillis = 0;
 unsigned long printPeriodMillis = 100;
 void loop() {
 
-  // web.update();
+  web.update();
 
-  if (1 and Serial.available()) { // a new message is available on the serial
+  if (USE_WEBSERIAL and Serial.available()) { // a new message is available on the serial
     Serial.println("New Message!");
     char header = Serial.read();
     char sep = Serial.read(); // remove the message separator(':')
@@ -180,10 +181,10 @@ void loop() {
   // Print some info
   unsigned long dmillis = millis()-lastMillis;
   if (printPeriodMillis and (dmillis>=printPeriodMillis)) {
-    // web.log("POS\t"+steppers.getCurrentPosition().to_String());
+    web.log("POS\t"+steppers.getCurrentPosition().to_String());
     // web.log("Motion Buffer Size: "+String(steppers.motionBuffer.size()));
     // web.log("Step Buffer Size: "+String(steppers.stepBuffer.size()));
-    steppers.getCurrentPosition().print(); Serial.println();
+    // steppers.getCurrentPosition().print(); Serial.println();
     lastMillis = millis();
   };
 }
