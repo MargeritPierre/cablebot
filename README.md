@@ -9,6 +9,10 @@ Il faut avant tout installer les librairies manquantes disponibles au téléchar
 > CircularBuffer
 > Simple Web Serial
 
+Si utilisation de l'interface web pour le pilotage :
+Intaller le package suivant sur VS Code
+> Live Server
+
 Configurer l'arduino au baud rate 250000 
 
 ## Utilisation avec page web
