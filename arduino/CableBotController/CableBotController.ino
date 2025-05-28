@@ -94,7 +94,7 @@ void loop() {
 
   web.update();
 
-  if (USE_WEBSERIAL and Serial.available()) { // a new message is available on the serial
+  if (!USE_WEBSERIAL and Serial.available()) { // a new message is available on the serial
     Serial.println("New Message!");
     char header = Serial.read();
     char sep = Serial.read(); // remove the message separator(':')
@@ -182,8 +182,8 @@ void loop() {
   unsigned long dmillis = millis()-lastMillis;
   if (printPeriodMillis and (dmillis>=printPeriodMillis)) {
     web.log("POS\t"+steppers.getCurrentPosition().to_String());
-    // web.log("Motion Buffer Size: "+String(steppers.motionBuffer.size()));
-    // web.log("Step Buffer Size: "+String(steppers.stepBuffer.size()));
+    web.log("Motion Buffer Size: "+String(steppers.motionBuffer.size()));
+    web.log("Step Buffer Size: "+String(steppers.stepBuffer.size()));
     // steppers.getCurrentPosition().print(); Serial.println();
     lastMillis = millis();
   };
