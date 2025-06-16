@@ -19,8 +19,10 @@ void toggleLed(JSONVar state) {
 }
 
 void move(JSONVar values) {
+
   // if you're using a common-cathode LED, just use "constrain(color, 0, 255);"
-  long r = (long)values["r"];
+  long r = (long)values["
+r"];
   long g = (long)values["g"];
   long b = (long)values["b"];
   long a = (long)values["a"];
