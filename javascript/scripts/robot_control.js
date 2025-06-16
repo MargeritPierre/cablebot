@@ -39,7 +39,7 @@
         });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setClearColor(0xffffff, 0);
-        document.body.appendChild(renderer.domElement);
+        document.getElementById('robot-view').appendChild(renderer.domElement);
 
         // THREE scene
         const scene = new THREE.Scene();
