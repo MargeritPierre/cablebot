@@ -49,7 +49,7 @@ img {
     background: #FFFFFF;
     border-radius: 20px;
 
-    flex-grow: 1;
+    /* flex-grow: 1; */
 
 }
 
@@ -192,6 +192,15 @@ img {
 }
 
 
+#main #container-view  {
+    position: relative;
+}
+#main #container-view #info {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+}
 #main #robot-view {
     max-width: 50vw;
     overflow: hidden;
