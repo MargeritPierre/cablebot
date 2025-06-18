@@ -1,4 +1,4 @@
-# cablebot
+# Cablebot
 
 Contrôle du robot parallèle à câbles dans le Hall 3 de l'ENSAM Paris.<br>
 *NB : sur VisualStudio Code, appuyer sur Ctrl+Shift+V pour afficher le .md*
