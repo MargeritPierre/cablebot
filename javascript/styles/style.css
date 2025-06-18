@@ -1,21 +1,30 @@
 :root {
     --primary-color: #285DF3;
+    --secondary-color: #EBF2FD;
 }
 
 body {
+    position: relative;
     margin: 0;
+    padding: 0;
     display: flex;
     flex-direction: row;
     justify-content: center;
-    align-items: center;
-    padding: 20px;
+    align-items: stretch;
     gap: 10px;
 
-    position: relative;
-
-    background: #EBF2FD;
+    background: var(--secondary-color);
     font-family: Arial, Helvetica, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+}
 
+
+/* COMMUN CLASSES ==========================*/
+h1,
+h2 {
+    margin: 0;
 }
 
 img {
@@ -23,17 +32,6 @@ img {
     height: 50px;
 }
 
-.test-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 1;
-    display: flex;
-    flex-direction: row;
-    gap: 20px;
-}
 
 .box {
     /* Frame 6 */
@@ -59,17 +57,89 @@ img {
 
 
 
+input[type="number"] {
+    background-color: var(--secondary-color);
+    border: none;
+    border-radius: 5px;
+    height: 1.5rem;
+    width: 100%;
+}
+
+input[type="range"] {
+    height: 1.5rem;
+}
+
+
+input[type="range"] {
+    /* removing default appearance */
+    -webkit-appearance: none;
+    appearance: none;
+    /* creating a custom design */
+    width: 100%;
+    cursor: pointer;
+    outline: none;
+    /*  slider progress trick  */
+    overflow: hidden;
+    border-radius: 5px;
+}
+
+/* Track: webkit browsers */
+input[type="range"]::-webkit-slider-runnable-track {
+    height: 1.5rem;
+    background: var(--secondary-color);
+    border-radius: 5px;
+}
+
+/* Track: Mozilla Firefox */
+input[type="range"]::-moz-range-track {
+    height: 1.5rem;
+    background: var(--secondary-color);
+    border-radius: 5px;
+}
+
+/* Thumb: webkit */
+input[type="range"]::-webkit-slider-thumb {
+    /* removing default appearance */
+    -webkit-appearance: none;
+    appearance: none;
+    /* creating a custom design */
+    width: 15px;
+    height: 1.5rem;
+
+    background-color: #fff;
+    border-radius: 5px;
+    border: 2px solid var(--primary-color);
+    /*  slider progress trick  */
+    box-shadow: -407px 0 0 400px var(--primary-color);
+}
+
+
+/* Thumb: Firefox */
+input[type="range"]::-moz-range-thumb {
+    height: 1.5rem;
+    width: 15px;
+    background-color: #fff;
+    border-radius: 5px;
+    border: 1px solid var(--primary-color);
+    /*  slider progress trick  */
+    box-shadow: -407px 0 0 400px var(--primary-color);
+}
+
+
+
+
+/* END COMMUN CLASSES ==========================*/
+
+
+
 #menu {
     position: relative;
-    /* Auto layout */
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
     padding: 10px;
-    gap: 20px;
+    gap: 10px;
 
-    width: 20vw;
-    height: 100%;
+    width: fit-content;
 
     box-sizing: border-box;
 }
@@ -81,11 +151,13 @@ img {
     justify-content: space-between;
     align-items: center;
     width: 100%;
+    margin-bottom: 2rem;
 }
 
 #menu #menu-header img {
     height: 25px;
     cursor: pointer;
+    transform: rotateZ(180deg);
 }
 
 #menu .menu-btn {
@@ -122,6 +194,7 @@ img {
 
 #menu .menu-btn.active p {
     color: white;
+    margin: 0;
 }
 
 #menu .menu-btn img {
@@ -138,17 +211,36 @@ img {
 }
 
 
+/* EXTENDED */
+#menu.extended h2,
+#menu.extended .menu-btn p {
+    display: none;
+}
+
+#menu.extended #menu-header img {
+    transform: rotateZ(0deg);
+    margin: auto;
+}
+
+#menu.extended {
+    background-color: #fff;
+    border-radius: 0 20px 20px 0;
+}
+
 
 /* ============================================== */
 
-#main {
+#main,
+#documentation {
     /* R Panel */
+    overflow: auto;
 
     /* Auto layout */
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    padding: 0px;
+    padding: 10px;
+    box-sizing: border-box;
     gap: 10px;
     position: relative;
 
@@ -157,10 +249,7 @@ img {
 
 
     /* Inside auto layout */
-    flex: none;
-    order: 1;
-    align-self: stretch;
-    flex-grow: 1;
+    flex: 1;
 
 }
 
@@ -169,6 +258,7 @@ img {
     display: flex;
     flex-direction: row;
     gap: 10px;
+    flex: 1;
 }
 
 #main #panel h3 {
@@ -181,42 +271,313 @@ img {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    flex: 1;
     width: 100%;
 }
 
+#main #l-panel {
+    flex: 3;
+}
+
+#main #r-panel {
+    flex: 1;
+}
+
+/* CONTROL PANEL */
 #main #top-panel {
     display: flex;
     flex-direction: row;
     gap: 10px;
 }
 
-
-#main #container-view  {
-    position: relative;
+#main #top-panel>div {
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
 }
+
+/* ROBOT CONTROL */
+.axis-inputs {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+}
+
+.axis-inputs label {
+    display: flex;
+    flex-direction: column;
+    font-weight: bold;
+}
+
+.control-layout {
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+    margin-top: 1em;
+}
+
+.direction-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    flex: 1;
+}
+
+.direction-controls button {
+    padding: 5px;
+    font-size: 14px;
+    border-radius: 6px;
+    border: none;
+    background-color: transparent;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.direction-controls button:hover {
+    background-color: #f8f8f8;
+}
+
+.direction-controls button[data-dir="arrière"] img {
+    transform: rotateZ(180deg);
+}
+
+.direction-controls button[data-dir="haut"] img {
+    transform: rotateZ(-90deg);
+}
+
+.direction-controls button[data-dir="bas"] img {
+    transform: rotateZ(90deg);
+}
+
+.direction-controls button[data-dir="gauche"] img {
+    transform: rotateZ(-180deg);
+}
+
+.step-control {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    height: 100%;
+    padding: 0 1rem;
+    box-sizing: border-box;
+    justify-content: space-between;
+}
+
+#stepSlider {
+    transform: rotateZ(-90deg) translateY(50%);
+    transform-origin: bottom right;
+    right: 50%;
+    min-width: 100px;
+    position: absolute;
+}
+
+#stepValue {
+    font-weight: bold;
+}
+
+
+
+
+
+
+/* CONFIGURATION ROBOT */
+
+#main #top-panel .slider-group {
+    width: 100%;
+}
+
+#main #top-panel .slider-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+#main #top-panel #params input[type="range"] {
+    flex: 3;
+}
+
+#main #top-panel #params input[type="number"] {
+    flex: 1;
+}
+
+
+
+
+
+
+
+
+#main #container-view {
+    position: relative;
+    flex: 1;
+}
+
+#main #container-view.full-screen::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: white;
+    z-index: -1;
+}
+
+#main #container-view.full-screen::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: var(--secondary-color);
+    z-index: -10;
+}
+
+#main #container-view.full-screen {
+    position: fixed;
+    top: 1rem;
+    left: 1rem;
+    bottom: 1rem;
+    right: 1rem;
+    z-index: 100;
+    overflow: hidden;
+}
+
+#main #container-view .btn-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 1rem;
+    box-sizing: border-box;
+    user-select: none;
+}
+
+#main #container-view .btn-container button {
+    user-select: all;
+    background-color: var(--secondary-color);
+    border: none;
+    border-radius: 10px;
+    height: 2rem;
+    padding: 5px;
+    cursor: pointer;
+}
+
+#main #container-view .btn-container button:hover {
+    opacity: .8;
+}
+
+#main #container-view .btn-container button img {
+    height: 100%;
+    width: auto;
+}
+
 #main #container-view #info {
     position: absolute;
-    bottom: 10px;
-    left: 50%;
-    transform: translateX(-50%);
+    top: 5px;
+    left: 5px;
+    right: 5px;
+    bottom: 5px;
+    background-color: rgba(235, 235, 235, 0.856);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 20px;
 }
-#main #robot-view {
+
+#main #container-view.full-screen #scene-view {
+    width: 100%;
+    height: 100%;
+    max-width: unset;
+}
+
+
+#main #scene-view {
     max-width: 50vw;
     overflow: hidden;
+    width: 50vw;
+    height: 30vh;
+    display: block;
+    overflow: hidden;
+    margin: 0 auto;
 }
 
 #main #console {
     height: 100%;
 }
 
-#main #console hr {
-    width: 100%;
-    border: solid 1px black;
-}
 
 #main #quick-actions,
 #main #play-stop-actions {
     gap: 20px;
     height: fit-content;
+    justify-content: center;
+    padding: 10px;
+}
+
+#main #quick-actions button,
+#main #play-stop-actions button {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    width: fit-content;
+    height: fit-content;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#main #quick-actions button:hover,
+#main #play-stop-actions button:hover {
+    opacity: 0.7;
+}
+
+#main #quick-actions img,
+#main #play-stop-actions img {
+    height: 2.5rem;
+    width: auto;
+}
+
+
+
+
+@media only screen and (max-width: 850px) {
+   #main #panel{
+    flex-direction: column;
+   } 
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ########################################### */
+/* DOCUMENTATION */
+/* ########################################### */
+#documentation {
+    align-items: stretch;
+    justify-content: stretch;
+}
+
+#documentation p,
+#documentation h3 {
+    margin: 0;
 }
