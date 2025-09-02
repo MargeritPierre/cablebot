@@ -1,0 +1,190 @@
+#include <Arduino.h>
+#include <SPI.h>
+
+#include <TimerOne.h>
+
+#define BAUDRATE 250000
+#define USE_WEBSERIAL true
+#define SERIAL_TIMEOUT 1000 //milliseconds
+#define MICROSTEP 16
+#define MAX_ACCELERATION 5000
+#define MAX_SPEED 4000
+#define MAX_IMMEDIATE_SPEED_CHANGE 0
+#define N_MOTORS 4  // number of activated motors
+#define RMS_CURRENT 2000
+#define DEDGE true // use DEDGE mode ? (STEP on rising AND falling edges)
+#include "Array.h" // defines some usefull functions
+
+#include "SerialUtils.h" // defines some usefull functions
+
+#include "DriverConfig.h" // defines the TMC5160 driver controller
+
+#include "StepperData.h" // defines objects that describe the state of the stepper motors
+
+#include "StepEngine.h" // defines the engine that generates the signals for the steppers
+
+#include "Music.h"
+
+#include "WebSerial.h"
+
+// =================================================================== SETUP
+void setup() {
+  digitalWrite(LED_BUILTIN,LOW) ;
+
+  SPI.begin();
+  Serial.begin(BAUDRATE);
+  Serial.setTimeout(SERIAL_TIMEOUT);
+  while (!Serial);  // Wait for serial port to connect
+  Serial.println();
+
+  // INITIALIZE TMC5160 DRIVERS
+  drivers.setup();
+  // drivers.testConnection(); // optional
+  drivers.applyConfig();
+  drivers.enable();
+
+  // Wait for Serial to open
+  digitalWrite(LED_BUILTIN,HIGH);
+
+  // Initialize stepper engine
+  steppers.setup();
+  
+  // WEB SERIAL MODE
+  web.setup();
+
+  // for (int i=0;i<10;i++) { web.serial.sendData("Setup!"); delay(100); };
+  // while(1) if (Serial.available()) Serial.print(char(Serial.read()));
+
+  // playChromatic();
+  playCScale();
+
+  // while(!Serial.available());
+
+  // // follow some path
+  // long dL = 2000 ;
+  // StepperPositions motions[] = {
+  //   // {-dL,dL,-dL,dL},
+  //   // {dL,-dL,dL,-dL},
+  //   // {dL,dL,-dL,-dL},
+  //   // {-dL,-dL,dL,dL},
+  //   {0,-dL,0,-dL},
+  //   {0,dL,0,dL},
+  // };
+  // const int nPath = sizeof(motions)/sizeof(motions[0]);
+  // steppers.motionBuffer.loop = true;
+  // for (int i=0;i<nPath;i++) steppers.move(StepperMotion(motions[i],2000,2000));
+  // steppers.motionBuffer.print();
+
+  // while(!Serial.available());
+
+
+  // Serial.println("Setup Finished.");
+
+  // TESTS!
+  // testOperationsOnStepperPositions();
+  // Array<int,4> testArray = {1,2,3,4};
+  // Serial.print("test array: "); testArray.print(); Serial.println();
+  // while(1);
+}
+
+// =================================================================== LOOP
+unsigned long lastMillis = 0;
+unsigned long printPeriodMillis = 100;
+void loop() {
+
+  web.update();
+
+  if (!USE_WEBSERIAL and Serial.available()) { // a new message is available on the serial
+    Serial.println("New Message!");
+    char header = Serial.read();
+    char sep = Serial.read(); // remove the message separator(':')
+    switch (header) {
+      case 'F': { // SOME FLOATNG POINT NUMBERS...
+        StepperFloats floats = StepperFloats(Serial);
+        Serial.println("floats: "+floats.to_String());
+      }; break;
+      case 'M': { // RELATIVE MOTION
+        StepperMotion motion = StepperMotion(Serial); // import the motion vector from the serial
+        steppers.move(motion);
+        steppers.motionBuffer.print();
+      }; break;
+      case 'G': { // RELATIVE MOTION
+        StepperMotion positions = StepperMotion(Serial); // import the motion vector from the serial
+        steppers.moveTo(positions);
+        steppers.motionBuffer.print();
+      }; break;
+      case 'E': { // ENABLE DRIVERS
+        drivers.enable();
+      }; break;
+      case 'D': { // DISABLE DRIVERS
+        drivers.disable();
+      }; break;
+      case 'I': { // CHANGE DRIVER RATED COIL CURRENT
+        drivers.rms_current = Serial.parseInt();
+        drivers.applyConfig();
+        Serial.println("DRIVER::RMS_CURRENT set to "+ String(drivers.rms_current));
+      }; break;
+      case 'P': { // PRINT BUFFER
+        steppers.stepBuffer.print();
+      }; break;
+      case 'X': { // PRINT stepper positions
+        printPeriodMillis = Serial.parseInt();
+        }; break;
+      case 'B': { // BUFFER-RELATED MESSAGES
+        header = sep; 
+        sep = Serial.read();
+        if (1) steppers.stepBuffer.clear();
+        else {
+          Serial.println("Emptying the buffer...");
+          steppers.stepBuffer.loop = false;
+          while (!steppers.stepBuffer.isEmpty()); // wait for the buffer to be empty
+        };
+        Timer1.stop(); delay(100);
+        switch (header) {
+          case 'S': { // Replace the full buffer with an HEX message
+            readHEXStepBufferFromSerial();
+          }; break;
+          case 'R': { // Ramp buffer
+            float maxspeed = MAX_SPEED;
+            float acceleration = MAX_ACCELERATION;
+            uint16_t length = STEP_BUFFER_SIZE;
+            if (Serial.available()) maxspeed = Serial.parseFloat();
+            Serial.read();
+            if (Serial.available()) acceleration = Serial.parseFloat();
+            Serial.read();
+            if (Serial.available()) length = Serial.parseInt();
+            generateRampStepBuffer(maxspeed,acceleration,length);
+          }; break;
+        };
+        steppers.stepBuffer.loop = true;
+        Timer1.start();
+        }; break;
+      case 'T': { // TESTS!
+        String testCase = Serial.readString();
+        testCase.trim(); // remove end of line, whitespaces etc..
+        if (testCase=="test") Serial.println("TEST!");
+        else if(testCase=="sin") generateSinMotion();
+        else if(testCase=="bounce") generateBounceMotion();
+        else Serial.println("Unknown Test: "+testCase);
+        }; break;
+      default: {
+        Serial.print("Unknown message: "); Serial.print(header); Serial.print(sep); while (Serial.available()) Serial.write(Serial.read());
+        }; break;
+    }
+    // PRINT BUFFER
+    while(Serial.available()) Serial.read(); // empty the serial input
+  }
+
+  // Update steppers
+  steppers.update();
+
+  // Print some info
+  unsigned long dmillis = millis()-lastMillis;
+  if (printPeriodMillis and (dmillis>=printPeriodMillis)) {
+    web.log("POS\t"+steppers.getCurrentPosition().to_String());
+    web.log("Motion Buffer Size: "+String(steppers.motionBuffer.size()));
+    web.log("Step Buffer Size: "+String(steppers.stepBuffer.size()));
+    // steppers.getCurrentPosition().print(); Serial.println();
+    lastMillis = millis();
+  };
+}

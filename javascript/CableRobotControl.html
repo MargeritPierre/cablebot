@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CableRobot</title>
+
+    <link rel="stylesheet" href="./styles/style.css" />
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"
+        integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+        <!-- SOURCE ICONES : https://icons8.com/icons/set/--style-family-puffy -->
+</head>
+
+<body>
+    <script type="importmap">
+            {
+                "imports": {
+                    "three": "https://threejs.org/build/three.module.js",
+                    "three/addons/": "https://threejs.org/examples/jsm/"
+                }
+            }
+        </script>
+
+
+
+    <section id="menu">
+        <div id="menu-header">
+            <h2>Menu</h2>
+            <img src="./media/close-pane.png" onclick="$('#menu').toggleClass('extended')">
+        </div>
+        <div class="menu-btn active" data-target="main">
+            <img src="./media/home.png">
+            <p>Accueil</p>
+        </div>
+        <div class="menu-btn" data-target="documentation">
+            <img src="./media/documents.png">
+            <p>Documentation</p>
+        </div>
+    </section>
+
+
+    <script>
+        $('.menu-btn').click(function () {
+            // Changer le bouton actif
+            $('.menu-btn').removeClass('active');
+            $(this).addClass('active');
+
+            // Récupérer l'ID de la vue à afficher
+            const target = $(this).data('target');
+
+            // Afficher la bonne vue et cacher les autres
+            $('.view').removeClass('active').hide();
+            $('#' + target).addClass('active').show();
+        });
+    </script>
+
+
+
+
+
+    <section id="main" class="view">
+        <div>
+            <h1>Interface de pilotage du Robot Parallèle à cables</h1>
+        </div>
+        <div id="panel">
+            <div id="l-panel">
+                <div id="top-panel">
+                    <div id="robot-control-panel" class="box">
+                        <h3>Contrôle du Robot</h3>
+
+                        <div class="axis-inputs">
+                            <label>X: <input type="number" id="xInput" /></label>
+                            <label>Y: <input type="number" id="yInput" /></label>
+                            <label>Z: <input type="number" id="zInput" /></label>
+                        </div>
+
+                        <div class="control-layout">
+                            <div class="direction-controls">
+                                <button data-dir="avant"><img
+                                        src="./media/move-2.png">Avant</button>
+                                <button data-dir="haut"><img
+                                        src="./media/move.png">Haut</button>
+                                <button data-dir="arrière"><img
+                                        src="./media/move-2.png">Arrière</button>
+                                <button data-dir="gauche"><img
+                                        src="./media/move.png">Gauche</button>
+                                <button data-dir="bas"><img
+                                        src="./media/move.png">Bas</button>
+                                <button data-dir="droite"><img
+                                        src="./media/move.png">Droite</button>
+                            </div>
+
+                            <div class="step-control">
+                                <label for="stepSlider">pas</label>
+                                <input type="range" id="stepSlider" min="1" max="100" value="10" step="1" />
+                                <div id="stepValue">10</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="params" class="box">
+                        <h3>Configuration</h3>
+
+                        <label>
+                            Envoyer Positions :
+                            <input type="checkbox" id="sendPositions" checked />
+                        </label>
+
+                        <div class="slider-group">
+                            <label for="acceleration">Accélération :</label>
+                            <div class="slider-row">
+                                <input type="range" id="acceleration" min="100" max="20000" value="10000" step="100">
+                                <input type="number" id="acceleration-input" min="100" max="20000" value="10000"
+                                    step="100">
+                            </div>
+                        </div>
+
+                        <div class="slider-group">
+                            <label for="maxspeed">Vitesse Max :</label>
+                            <div class="slider-row">
+                                <input type="range" id="maxspeed" min="100" max="10000" value="2000" step="100">
+                                <input type="number" id="maxspeed-input" min="100" max="10000" value="2000" step="100">
+                            </div>
+                        </div>
+
+
+                    </div>
+                </div>
+                <div id="container-view" class="box">
+                    <div class="btn-container">
+                        <button onclick="$('#container-view #info').show()"><img
+                                src="./media/info.png"></button>
+                        <button onclick="$('#container-view').toggleClass('full-screen');"><img
+                                src="./media/full-screen.png"></button>
+                    </div>
+                    <div id="scene-view"></div>
+                    <div id="info" style="display: none;" onclick="$(this).hide()">
+                        Orbit controls enabled via Mouse interaction<br />
+                        Toggle effector control via keyboard: "r" to rotate, "t" to translate</div>
+                </div>
+                <div id="quick-actions" class="box row">
+                    <button id="homing-btn"><img src="./media/homing.png"></button>
+                    <button id="border-btn"><img src="./media/border.png"></button>
+                    <button id="center-btn"><img src="./media/center.png"></button>
+                    <button><img src="./media/alarm.png"></button>
+                </div>
+            </div>
+            <div id="r-panel">
+                <div id="console" class="box">
+                    <h3>Console</h3>
+                    <div class="motorData">
+                        <p><b>Motor steps :</b><br> <span id="motorSteps"></span></p>
+                    </div>
+                    <div class="motorData">
+                        <p><b>Motor Positions :</b><br> <span id="motorPositions"></span></p>
+                    </div>
+                </div>
+                <div id="play-stop-actions" class="box row">
+                    <button><img src="./media/play.png"></button>
+                    <button><img src="./media/stop.png"></button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+    <section id="documentation" class="view" style="display: none;">
+        <h1>Documents utiles</h1>
+        <div class="box">
+            <h3>README</h3>
+            <p>Ce qu'est un README?? Clairement le fichier le plus important d'un code, à lire avant de toucher à quoi
+                que ce soit ! Dans ce fichier sont détaillées toutes les informations à connaître pour prendre en main
+                le robot.</p>
+            <a href="../README.md" target="_blank">Ouvrir le README</a>
+        </div>
+        <div class="box">
+            <h3>Github</h3>
+            <p>Ce github donne accès à tout le code Arduino et web nécessaire pour contrôler le RPC.</p>
+            <a href="https://github.com/MargeritPierre/cablebot" target="_blank">Lien vers github</a>
+        </div>
+        <div class="box">
+            <h3>DropBox</h3>
+            <p>Dossier regroupant tout le travail réalisé par les différentes promos de mécatronique au cours des
+                années.</p>
+            <a href="https://www.dropbox.com/scl/fo/nhvrjfz4iuxai5j4trsgh/ADUYCk2vf0P3GPDLUvpZbuk?rlkey=agpjufyy80e72n24i505bf9fw&e=1&st=349ke1av&dl=0"
+                target="_blank">Lien vers DropBox</a>
+        </div>
+    </section>
+
+
+
+
+
+
+    <script lang="text/javascript" src="./scripts/simple-web-serial.min.js"></script>
+    <script type="module" src="./scripts/robot_control.js"></script>
+</body>
+
+</html>
