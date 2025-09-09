@@ -5,12 +5,12 @@
 
 #define BAUDRATE 250000
 #define SERIAL_TIMEOUT 1000 //milliseconds
-#define MICROSTEP 0
+#define MICROSTEP 16
 #define MAX_ACCELERATION 5000
 #define MAX_SPEED 4000
-#define MAX_IMMEDIATE_SPEED_CHANGE 10
+#define MAX_IMMEDIATE_SPEED_CHANGE 0
 #define N_MOTORS 4  // number of activated motors
-#define RMS_CURRENT 1500
+#define RMS_CURRENT 2000
 #define DEDGE true // use DEDGE mode ? (STEP on rising AND falling edges)
 #include "Array.h" // defines some usefull functions
 
@@ -22,7 +22,9 @@
 
 #include "StepEngine.h" // defines the engine that generates the signals for the steppers
 
-#include "WebSerial.h"
+#include "Music.h"
+
+// #include "WebSerial.h"
 
 // =================================================================== SETUP
 void setup() {
@@ -46,7 +48,34 @@ void setup() {
   // Initialize stepper engine
   steppers.setup();
   
-  web.setup();
+  // WEB SERIAL MODE
+  // web.setup();
+
+  // for (int i=0;i<10;i++) { web.serial.sendData("Setup!"); delay(100); };
+  // while(1) if (Serial.available()) Serial.print(char(Serial.read()));
+
+  // playChromatic();
+  playCScale();
+
+  // while(!Serial.available());
+
+  // // follow some path
+  // long dL = 2000 ;
+  // StepperPositions motions[] = {
+  //   // {-dL,dL,-dL,dL},
+  //   // {dL,-dL,dL,-dL},
+  //   // {dL,dL,-dL,-dL},
+  //   // {-dL,-dL,dL,dL},
+  //   {0,-dL,0,-dL},
+  //   {0,dL,0,dL},
+  // };
+  // const int nPath = sizeof(motions)/sizeof(motions[0]);
+  // steppers.motionBuffer.loop = true;
+  // for (int i=0;i<nPath;i++) steppers.move(StepperMotion(motions[i],2000,2000));
+  // steppers.motionBuffer.print();
+
+  // while(!Serial.available());
+
 
   // Serial.println("Setup Finished.");
 
@@ -59,12 +88,12 @@ void setup() {
 
 // =================================================================== LOOP
 unsigned long lastMillis = 0;
-unsigned long printPeriodMillis = 0;
+unsigned long printPeriodMillis = 100;
 void loop() {
 
-  web.update();
+  // web.update();
 
-  if (0 and Serial.available()) { // a new message is available on the serial
+  if (1 and Serial.available()) { // a new message is available on the serial
     Serial.println("New Message!");
     char header = Serial.read();
     char sep = Serial.read(); // remove the message separator(':')
@@ -150,11 +179,11 @@ void loop() {
 
   // Print some info
   unsigned long dmillis = millis()-lastMillis;
-  if (printPeriodMillis and dmillis>=printPeriodMillis) {
-    web.log("POS\t"+steppers.getCurrentPosition().to_String());
-    web.log("Motion Buffer Size: "+String(steppers.motionBuffer.size()));
-    web.log("Step Buffer Size: "+String(steppers.stepBuffer.size()));
-    // steppers.getCurrentPosition().print(); Serial.println();
+  if (printPeriodMillis and (dmillis>=printPeriodMillis)) {
+    // web.log("POS\t"+steppers.getCurrentPosition().to_String());
+    // web.log("Motion Buffer Size: "+String(steppers.motionBuffer.size()));
+    // web.log("Step Buffer Size: "+String(steppers.stepBuffer.size()));
+    steppers.getCurrentPosition().print(); Serial.println();
     lastMillis = millis();
   };
 }

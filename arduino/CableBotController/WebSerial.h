@@ -20,19 +20,24 @@ void toggleLed(JSONVar state) {
 
 void move(JSONVar values) {
   // if you're using a common-cathode LED, just use "constrain(color, 0, 255);"
-  long r = constrain((long)values["r"], 0, 255);
-  long g = constrain((long)values["g"], 0, 255);
-  long b = constrain((long)values["b"], 0, 255);
+  long r = (long)values["r"];
+  long g = (long)values["g"];
+  long b = (long)values["b"];
+  long a = (long)values["a"];
 
-  StepperPositions pos = {r,g,b,0};
-  StepperMotion motion = StepperMotion(pos,1000,5000);
+  StepperPositions pos = {r,g,b,a};
+  StepperMotion motion = StepperMotion(pos,4000,20000);
   steppers.move(motion);
+  // web.log("move");
+  // while (!steppers.motionBuffer.isEmpty()) steppers.update();
+  // web.log("emptyMotionBuffer");
+  // while (!steppers.stepBuffer.isEmpty()) delay(10);
+  // web.log("emptyStepBuffer");
 
-  // print the three numbers in one string as hexadecimal:
-  char format[8];
-  sprintf(format, "#%02X%02X%02X", (int)values["r"], (int)values["g"], (int)values["b"]);
-  web.serial.send("hexadecimal", format);
-  web.log(String(steppers.motionBuffer.size()));
+  // String msg = "";
+  // msg+=motion.to_String();
+  // msg+=" ("+String(steppers.motionBuffer.size())+")";
+  // web.log(msg);
 }
 
 

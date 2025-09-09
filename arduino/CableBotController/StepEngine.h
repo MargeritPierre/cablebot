@@ -92,6 +92,7 @@ class StepEngine {
   public:
     StepBuffer stepBuffer; // buffer containing the next step structures to execute
     MotionBuffer motionBuffer; // buffer of the upcoming RELATIVE motions
+    bool smoothMotion = true;
     void setup();
     void setStepGenerationMode(char mode);  // change the step generation mode
     void step();                            // apply the next buffered step; executed by the timer interrupt
@@ -105,7 +106,7 @@ class StepEngine {
     void moveTo(StepperMotion positions);
   private:
     StepperPositions _currentPosition;       // the current motor step positions (the most up to date, updated by the timer interrupt)
-    char _stepGenerationMode = 'M';          // stepping generation: M:from motion buffer, S:from step buffer
+    char _stepGenerationMode = 'S';          // stepping generation: M:from motion buffer, S:from step buffer
     StepperPositions _targetPosition;           // the current positions where the steppers are going
     StepperMotion _updateMotion ;//= StepperMotion(StepperPositions(0),0.0);           // the current positions where the steppers are going
     unsigned long _updateStepsToTarget = 0;  // how many update steps need to be pushed on the buffer to plan the target reach ?
@@ -163,9 +164,9 @@ void StepEngine::move(StepperMotion motion) {
   while (!motionBuffer.available()) steppers.update();  // wait for the positions buffer to have free space
   // StepperBools rotationInversed = (motion.getSpeeds().sign())._int() != (getLastMotion().getSpeeds().sign())._int();
   // if (rotationInversed.any()) {
-    // float midSpeed = min(MAX_IMMEDIATE_SPEED_CHANGE/2,0.5*(motion.speed+getLastMotion().speed));
-    // Serial.println("ghost motion added with speed="+String(midSpeed));
-    // motionBuffer.push(StepperMotion(StepperPositions(0),midSpeed));
+  //   float midSpeed = min(MAX_IMMEDIATE_SPEED_CHANGE/2,0.5*(motion.speed+getLastMotion().speed));
+  //   Serial.println("ghost motion added with speed="+String(midSpeed));
+  //   motionBuffer.push(StepperMotion(StepperPositions(0),midSpeed));
   // }
   motionBuffer.push(motion);
 };
@@ -199,18 +200,21 @@ void StepEngine::update() {
       bresenhamInit(_updateMotion);                        // initialize the bresenham stepping scheme
       _updateStepsToTarget = _max_N_bresenham;                               // initialize the number of updates to perform
       // Init speed infos
-      _updateSpeed = max(_updateSpeed,minSpeed(_updateMotion.acceleration)); // prevent any negative or zero step update speed
-      _motionEndSpeed = 0.0; // will be updated later if needed, see below
-      _targetSpeed = _updateMotion.speed;
-      _updateStepsToTargetSpeedUpdate = 0; // will trigger its computation on the next update, see below
-      // Serial.println("  update steps to target: "+String(_updateStepsToTarget));
+      if (smoothMotion) {
+        _updateSpeed = max(_updateSpeed,minSpeed(_updateMotion.acceleration)); // prevent any negative or zero step update speed
+        _motionEndSpeed = 0.0; // will be updated later if needed, see below
+        _targetSpeed = _updateMotion.speed;
+        _updateStepsToTargetSpeedUpdate = 0; // will trigger its computation on the next update, see below
+        _updateStep.setSpeed(_updateSpeed);
+      } else {
+        _updateStep.setSpeed(_updateMotion.speed);
+      }// Serial.println("  update steps to target: "+String(_updateStepsToTarget));
       // Speed handling
     };
     while (stepBuffer.available() && _updateStepsToTarget != 0) {  // while there is some room on the step buffer...
       // Push a new step to the step buffer
       StepperBools needsStep = bresenhamStep();  // which motor needs to be stepped ?
       _updateStep.step = StepperBool2Byte(needsStep);
-      _updateStep.setSpeed(_updateSpeed);
       // Serial.print("update step: ");_updateStep.print();Serial.println();
       noInterrupts();
       stepBuffer.push(_updateStep);
@@ -218,68 +222,60 @@ void StepEngine::update() {
       // An update step has been added
       _updateStepsToTarget--;
       // update speed
-        // unsigned long nStepsToMotionSpeed = nStepsToReachSpeed(_targetPosition.speed,_updateSpeed,_targetPosition.acceleration);
-        // Serial.println("nStepsToMotionSpeed: "+String(nStepsToMotionSpeed));
-      if (!motionBuffer.isEmpty() && _motionEndSpeed==0.0) { // Has a new motion been added to the buffer ?
-        if (motionBuffer.first().speed>0.0) {
-          // Serial.println("motionBuffer.first(): "+motionBuffer.first().to_String());
-          _motionEndSpeed = 0.5*(motionBuffer.first().speed+_updateMotion.speed); 
-          // Serial.println("_motionEndSpeed:"+String(_updateMotion.speed)+"|"+String(_motionEndSpeed)+"|"+String(motionBuffer.first().speed));
-          _updateStepsToTargetSpeedUpdate = 0; // this needs to be updated below
-          // Serial.println("targetspeed update needed!");
-        }
-        // Serial.println("_updateStepsToTarget:"+String(_updateStepsToTarget));
-      };
-      // Serial.println();
-      // Serial.println("updateStepsToTargetSpeedUpdate:"+String(_updateStepsToTargetSpeedUpdate));
-      if (_updateStepsToTargetSpeedUpdate==0) { // acceleration & step numbers need to be updated
-        // Serial.println("== target speed update ==");
-        // Serial.println("_updateSpeed:"+String(_updateSpeed));
-        unsigned long nStepsToTargetSpeed = nStepsToReachSpeed(_targetSpeed,_updateSpeed,_updateMotion.acceleration);
-        unsigned long nStepsToMotionEndSpeed = nStepsToReachSpeed(_motionEndSpeed,_updateSpeed,_updateMotion.acceleration);
-        // Serial.println("motionEndSpeed:"+String(_motionEndSpeed));
-        // Serial.println("nStepsToTargetSpeed:"+String(nStepsToTargetSpeed));
-        // Serial.println("nStepsToMotionEndSpeed:"+String(nStepsToMotionEndSpeed));
-        // Serial.println("_updateStepsToTarget:"+String(_updateStepsToTarget));
-        if (nStepsToMotionEndSpeed>=_updateStepsToTarget) { // we are getting close to the target
-          // Serial.println("  to motionEndSpeed");
-          _targetSpeed = _motionEndSpeed;
-          _updateStepsToTargetSpeedUpdate = nStepsToMotionEndSpeed;
-        } else if (nStepsToTargetSpeed<=1) { // we reached the motion speed, let's stop accelerating
-          _updateSpeed = _targetSpeed;
-          // Serial.println("  keep targetSpeed");
-          _updateStepsToTargetSpeedUpdate = _updateStepsToTarget - nStepsToMotionEndSpeed; // next acceleration update will happen when we get close to the target
-        }
-        else { // we need to accelerate to the targetspeed
-          unsigned long nStepsFromTargetToEndMotionSpeeds = nStepsToReachSpeed(_motionEndSpeed,_targetSpeed,_updateMotion.acceleration);
-          // Serial.println("nStepsFromTargetToEndMotionSpeeds:"+String(nStepsFromTargetToEndMotionSpeeds));
-          if ((nStepsToTargetSpeed+nStepsFromTargetToEndMotionSpeeds)>_updateStepsToTarget) { // we need to adjst the targetspeed so that we will have the time to deccelerate after
-            float ts = sqrt( _updateMotion.acceleration*float(_updateStepsToTarget) + _updateSpeed*_updateSpeed + _motionEndSpeed*_motionEndSpeed);
-            _targetSpeed = min(_targetSpeed,ts);
-            // Serial.println("targetSpeed adjusted to "+String(_targetSpeed));
+      if (smoothMotion) {
+          // unsigned long nStepsToMotionSpeed = nStepsToReachSpeed(_targetPosition.speed,_updateSpeed,_targetPosition.acceleration);
+          // Serial.println("nStepsToMotionSpeed: "+String(nStepsToMotionSpeed));
+        if (!motionBuffer.isEmpty() && _motionEndSpeed==0.0) { // Has a new motion been added to the buffer ?
+          if (motionBuffer.first().speed>0.0) {
+            // Serial.println("motionBuffer.first(): "+motionBuffer.first().to_String());
+            _motionEndSpeed = 0.5*(motionBuffer.first().speed+_updateMotion.speed); 
+            // Serial.println("_motionEndSpeed:"+String(_updateMotion.speed)+"|"+String(_motionEndSpeed)+"|"+String(motionBuffer.first().speed));
+            _updateStepsToTargetSpeedUpdate = 0; // this needs to be updated below
+            // Serial.println("targetspeed update needed!");
           }
-          // Serial.println("  accelerate to targetSpeed="+String(_targetSpeed));
-          _updateStepsToTargetSpeedUpdate = nStepsToReachSpeed(_targetSpeed,_updateSpeed,_updateMotion.acceleration);
+          // Serial.println("_updateStepsToTarget:"+String(_updateStepsToTarget));
+        };
+        // Serial.println();
+        // Serial.println("updateStepsToTargetSpeedUpdate:"+String(_updateStepsToTargetSpeedUpdate));
+        if (_updateStepsToTargetSpeedUpdate==0) { // acceleration & step numbers need to be updated
+          // Serial.println("== target speed update ==");
+          // Serial.println("_updateSpeed:"+String(_updateSpeed));
+          unsigned long nStepsToTargetSpeed = nStepsToReachSpeed(_targetSpeed,_updateSpeed,_updateMotion.acceleration);
+          unsigned long nStepsToMotionEndSpeed = nStepsToReachSpeed(_motionEndSpeed,_updateSpeed,_updateMotion.acceleration);
+          // Serial.println("motionEndSpeed:"+String(_motionEndSpeed));
+          // Serial.println("nStepsToTargetSpeed:"+String(nStepsToTargetSpeed));
+          // Serial.println("nStepsToMotionEndSpeed:"+String(nStepsToMotionEndSpeed));
+          // Serial.println("_updateStepsToTarget:"+String(_updateStepsToTarget));
+          if (nStepsToMotionEndSpeed>=_updateStepsToTarget) { // we are getting close to the target
+            // Serial.println("  to motionEndSpeed");
+            _targetSpeed = _motionEndSpeed;
+            _updateStepsToTargetSpeedUpdate = nStepsToMotionEndSpeed;
+          } else if (nStepsToTargetSpeed<=1) { // we reached the motion speed, let's stop accelerating
+            _updateSpeed = _targetSpeed;
+            // Serial.println("  keep targetSpeed");
+            _updateStepsToTargetSpeedUpdate = _updateStepsToTarget - nStepsToMotionEndSpeed; // next acceleration update will happen when we get close to the target
+          }
+          else { // we need to accelerate to the targetspeed
+            unsigned long nStepsFromTargetToEndMotionSpeeds = nStepsToReachSpeed(_motionEndSpeed,_targetSpeed,_updateMotion.acceleration);
+            // Serial.println("nStepsFromTargetToEndMotionSpeeds:"+String(nStepsFromTargetToEndMotionSpeeds));
+            if ((nStepsToTargetSpeed+nStepsFromTargetToEndMotionSpeeds)>_updateStepsToTarget) { // we need to adjst the targetspeed so that we will have the time to deccelerate after
+              float ts = sqrt( _updateMotion.acceleration*float(_updateStepsToTarget) + _updateSpeed*_updateSpeed + _motionEndSpeed*_motionEndSpeed);
+              _targetSpeed = min(_targetSpeed,ts);
+              // Serial.println("targetSpeed adjusted to "+String(_targetSpeed));
+            }
+            // Serial.println("  accelerate to targetSpeed="+String(_targetSpeed));
+            _updateStepsToTargetSpeedUpdate = nStepsToReachSpeed(_targetSpeed,_updateSpeed,_updateMotion.acceleration);
+          }
+          // Serial.println("updateStepsToTargetSpeedUpdate:"+String(_updateStepsToTargetSpeedUpdate));
+          float speedDiff = _targetSpeed - _updateSpeed;
+          _accelerationDir = int(speedDiff>0.0)-int(speedDiff<0.0); // acceleration direction: compute the sign of speedDiff
         }
-        // Serial.println("updateStepsToTargetSpeedUpdate:"+String(_updateStepsToTargetSpeedUpdate));
-        float speedDiff = _targetSpeed - _updateSpeed;
-        _accelerationDir = int(speedDiff>0.0)-int(speedDiff<0.0); // acceleration direction: compute the sign of speedDiff
+        if (_accelerationDir!=0)
+          if (_accelerationDir>0) _updateSpeed = min(_updateSpeed+(_updateMotion.acceleration/_updateSpeed),_targetSpeed);
+          else _updateSpeed = max(_updateSpeed-(_updateMotion.acceleration/_updateSpeed),_targetSpeed);
+        _updateStepsToTargetSpeedUpdate--;
+        _updateStep.setSpeed(_updateSpeed);
       }
-      if (_accelerationDir!=0)
-        if (_accelerationDir>0) _updateSpeed = min(_updateSpeed+(_updateMotion.acceleration/_updateSpeed),_targetSpeed);
-        else _updateSpeed = max(_updateSpeed-(_updateMotion.acceleration/_updateSpeed),_targetSpeed);
-      _updateStepsToTargetSpeedUpdate--;
-        // Serial.println("updateStepsToTargetSpeedUpdate:"+String(_updateStepsToTargetSpeedUpdate));
-        // Serial.println("updateStepsToTarget:"+String(_updateStepsToTarget));
-      //   // Serial.println("speedAtTarget: "+String(_motionEndSpeed));
-      //   unsigned long nStepsToMotionEndSpeed = nStepsToReachSpeed(_motionEndSpeed,_updateSpeed,_targetPosition.acceleration);
-      //   // Serial.println("nStepsToMotionEndSpeed: "+String(nStepsToMotionEndSpeed));
-      //   float nextSpeed = _targetPosition.speed;
-      //   if (nStepsToMotionEndSpeed >= _updateStepsToTarget) nextSpeed = _motionEndSpeed;
-      //   if (nextSpeed>_updateSpeed) _updateSpeed = min(nextSpeed,_updateSpeed + _targetPosition.acceleration/_updateSpeed);
-      //   else _updateSpeed = max(nextSpeed,_updateSpeed - _targetPosition.acceleration/_updateSpeed);
-      //   // Serial.println("nextSpeed: "+String(nextSpeed));
-      // // Serial.print("UpdateStep:");_updateStep.print(); Serial.println();
     };
     // Serial.println("OUT OF UPDATE LOOP");
   };
